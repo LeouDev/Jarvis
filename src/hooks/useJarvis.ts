@@ -172,6 +172,15 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     setState((s) => (s === 'speaking' || s === 'listening' ? 'idle' : s));
   }, []);
 
+  // What the always-on mic last heard, shown briefly so you can tell "not heard" from "mis-heard".
+  const [heard, setHeard] = useState('');
+  const heardTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const showHeard = useCallback((text: string) => {
+    setHeard(text);
+    clearTimeout(heardTimer.current);
+    heardTimer.current = setTimeout(() => setHeard(''), 3000);
+  }, []);
+
   // Wake word: while idle, listen for "Jarvis…" and act on whatever follows it.
   const latest = useRef({ send, capture });
   latest.current = { send, capture };
@@ -181,14 +190,16 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     if (!wakeWord || state !== 'idle' || approval) return;
     return voice.listenForWakeWord({
       lang,
+      onArmed: chime,
+      onHeard: showHeard,
       onWake: (command) => {
-        chime();
+        setHeard('');
         if (command) void latest.current.send(command, true);
         else void latest.current.capture(true);
       },
       onError: setError,
     });
-  }, [wakeWord, state, approval, lang]);
+  }, [wakeWord, state, approval, lang, showHeard]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && interrupt();
@@ -218,5 +229,5 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     setMessages((data ?? []).map((m) => ({ id: m.id, role: m.role, content: m.content, executions: [], notices: [] })));
   };
 
-  return { messages, state, interim, error, approval, decide, send, listen, interrupt, busy, conversationId, newConversation, openConversation, wakeWord };
+  return { messages, state, interim, error, approval, decide, send, listen, interrupt, busy, conversationId, newConversation, openConversation, wakeWord, heard };
 }

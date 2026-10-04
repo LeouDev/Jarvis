@@ -7,14 +7,24 @@ export interface VoiceProvider {
   listen(opts: { onInterim?: (text: string) => void; lang?: string }): Promise<string>;
   stopListening(): void;
   /** Listens continuously for the wake word; calls onWake with whatever followed it. Returns a stop function. */
-  listenForWakeWord(opts: { onWake: (command: string) => void; onError?: (message: string) => void; lang?: string }): () => void;
+  listenForWakeWord(opts: WakeOptions): () => void;
   speak(text: string, opts?: { voiceName?: string; rate?: number }): Promise<void>;
   stopSpeaking(): void;
   voices(): string[];
 }
 
+export interface WakeOptions {
+  onWake: (command: string) => void;
+  /** The wake word was recognised (fires early, from interim results). */
+  onArmed?: () => void;
+  /** Live transcript of what the mic is hearing, for feedback. */
+  onHeard?: (text: string) => void;
+  onError?: (message: string) => void;
+  lang?: string;
+}
+
 type Recognition = {
-  lang: string; interimResults: boolean; continuous: boolean;
+  lang: string; interimResults: boolean; continuous: boolean; maxAlternatives: number;
   onresult: (e: any) => void; onerror: (e: any) => void; onend: () => void;
   start(): void; stop(): void; abort(): void;
 };
@@ -22,8 +32,23 @@ type Recognition = {
 const RecognitionCtor: (new () => Recognition) | undefined =
   typeof window !== 'undefined' ? (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition : undefined;
 
-// "Jarvis" plus the ways recognizers commonly mishear it; captures what follows ("Jarvis, open VS Code").
-export const WAKE = /\b(jarvis|jarvas|javis|jervis)\b[\s,.!?]*(.*)$/i;
+// "Jarvis" plus the ways recognizers commonly mishear it (incl. b/v swaps); captures what follows.
+export const WAKE = /\b(jarvis|jarvas|jarvys|jarves|javis|jervis|jarbis|jarbes|jarvi)\b[\s,.!?]*(.*)$/i;
+
+/** The command after the wake word in the first alternative that contains it, or null. */
+export function findWake(alternatives: string[]): string | null {
+  for (const t of alternatives) {
+    const m = t.match(WAKE);
+    if (m) return m[2].trim();
+  }
+  return null;
+}
+
+const alternativesOf = (result: ArrayLike<{ transcript: string }>) => Array.from(result, (a) => a.transcript);
+
+// Capture timing: stop after this pause once you've started speaking; give up if nothing is said.
+const PAUSE_MS = 1600;
+const NO_SPEECH_MS = 8000;
 
 const RECOGNITION_ERRORS: Record<string, string> = {
   'not-allowed': 'Microphone access was denied. Allow it for this site in your browser settings.',
@@ -84,27 +109,36 @@ export class BrowserVoiceProvider implements VoiceProvider {
       this.recognition = r;
       r.lang = lang || navigator.language || 'en-US';
       r.interimResults = true;
-      r.continuous = false;
+      // Continuous mode + our own end-of-speech timer: Chrome's one-shot mode often cuts people off at the first pause.
+      r.continuous = true;
       let finalText = '';
-      let silent = false;
+      let spoke = false;
+      let lastHeard = Date.now();
+      let failed = false;
+      const watchdog = setInterval(() => Date.now() - lastHeard > (spoke ? PAUSE_MS : NO_SPEECH_MS) && r.stop(), 200);
       r.onresult = (e) => {
         let interim = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
+        finalText = '';
+        for (let i = 0; i < e.results.length; i++) {
           const t = e.results[i][0].transcript;
           e.results[i].isFinal ? (finalText += t) : (interim += t);
         }
+        spoke = true;
+        lastHeard = Date.now();
         onInterim?.(finalText + interim);
       };
       r.onerror = (e) => {
-        if (e.error === 'no-speech') silent = true;
         if (e.error === 'no-speech' || e.error === 'aborted') return;
+        failed = true;
         reject(new Error(RECOGNITION_ERRORS[e.error] ?? `Voice input failed (${e.error}).`));
       };
       r.onend = () => {
-        this.recognition = null;
-        // The mic delivered audio but no speech: usually the wrong input device or a muted headset.
-        if (silent && !finalText.trim()) reject(new NoSpeechError());
-        else resolve(finalText.trim());
+        clearInterval(watchdog);
+        if (this.recognition === r) this.recognition = null;
+        if (failed) return;
+        // Nothing recognised: usually the wrong input device, a muted headset, or a blocked mic.
+        const text = finalText.trim();
+        text ? resolve(text) : reject(new NoSpeechError());
       };
       r.start();
     });
@@ -114,7 +148,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
     this.recognition?.stop();
   }
 
-  listenForWakeWord({ onWake, onError, lang }: { onWake: (command: string) => void; onError?: (message: string) => void; lang?: string }) {
+  listenForWakeWord({ onWake, onArmed, onHeard, onError, lang }: WakeOptions) {
     if (!RecognitionCtor) {
       onError?.('Wake word needs speech recognition (Chrome or Safari).');
       return () => {};
@@ -128,15 +162,38 @@ export class BrowserVoiceProvider implements VoiceProvider {
       const r = new RecognitionCtor();
       current = r;
       const startedAt = Date.now();
+      let armed = false;
+      let ending = false;
+      let graceTimer: ReturnType<typeof setTimeout> | undefined;
+      const finish = () => {
+        if (ending) return;
+        ending = true;
+        clearTimeout(graceTimer);
+        r.stop(); // hand the mic over only once this session has fully ended (see onend)
+      };
       r.lang = lang || navigator.language || 'en-US';
       r.continuous = true;
-      r.interimResults = false;
+      r.interimResults = true;
+      r.maxAlternatives = 5; // "Jarvis" is often the 2nd or 3rd guess
       r.onresult = (e) => {
         for (let i = e.resultIndex; i < e.results.length; i++) {
-          const m = e.results[i].isFinal && e.results[i][0].transcript.match(WAKE);
-          if (m && heard === null) {
-            heard = m[2].trim();
-            r.stop(); // hand the mic over only once this session has fully ended (see onend)
+          const result = e.results[i];
+          const alts = alternativesOf(result);
+          onHeard?.(alts[0] ?? '');
+          const command = findWake(alts);
+          if (command !== null && !armed) {
+            armed = true;
+            onArmed?.();
+          }
+          if (!result.isFinal) continue;
+          if (heard === null && armed) {
+            heard = command ?? '';
+            // "Jarvis…" then a pause: give the command a moment to arrive in this same session.
+            if (heard) finish();
+            else graceTimer = setTimeout(finish, 1500);
+          } else if (heard === '') {
+            heard = (alts[0] ?? '').trim();
+            finish();
           }
         }
       };
@@ -147,11 +204,12 @@ export class BrowserVoiceProvider implements VoiceProvider {
         }
       };
       r.onend = () => {
+        clearTimeout(graceTimer);
         if (heard !== null) return onWake(heard);
         if (stopped) return;
         // Browsers end long sessions on their own; restart, backing off if it keeps dying immediately.
         quickEnds = Date.now() - startedAt < 2000 ? quickEnds + 1 : 0;
-        setTimeout(() => !stopped && start(), quickEnds > 3 ? 3000 : 150);
+        setTimeout(() => !stopped && start(), quickEnds > 3 ? 3000 : 100);
       };
       try {
         r.start();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { speakable, WAKE } from '../src/lib/voice';
+import { findWake, speakable, WAKE } from '../src/lib/voice';
 
 const command = (heard: string) => heard.match(WAKE)?.[2].trim() ?? null;
 
@@ -13,6 +13,12 @@ describe('wake word', () => {
   it('wakes with an empty command when only the name is said', () => {
     expect(command('Jarvis')).toBe('');
     expect(command('hey Jarvis?')).toBe('');
+  });
+
+  it('checks every recognizer alternative and common mishearings', () => {
+    expect(findWake(['service open VS Code', 'Jarvis open VS Code'])).toBe('open VS Code');
+    expect(findWake(['hey Jarbis what time is it'])).toBe('what time is it');
+    expect(findWake(['open the door', 'open the drawer'])).toBeNull();
   });
 
   it('ignores speech without the wake word', () => {

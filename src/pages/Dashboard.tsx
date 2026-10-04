@@ -172,6 +172,7 @@ export default function Dashboard({ session }: { session: Session }) {
                   )}
                   <CommandInput state={j.state} interim={j.interim} busy={j.busy} voiceSupported={voice.supportsInput} onSend={j.send} onListen={j.listen} />
                   {j.error && <p className="text-center text-xs text-danger">{j.error}</p>}
+                  {j.wakeWord && j.state === 'idle' && j.heard && <p className="truncate text-center text-xs text-faint">Heard: “{j.heard}”</p>}
                 </div>
               </div>
             </div>
