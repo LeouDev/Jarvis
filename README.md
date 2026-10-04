@@ -127,6 +127,7 @@ Everything lives in `.env` (git-ignored). See `.env.example` for the full annota
 | `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` | – | Fallbacks or alternatives. |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | ✓ | These two are the only values exposed to the browser (see `vite.config.ts`). |
 | `SUPABASE_SERVICE_ROLE_KEY` | – | Not used. Never expose it. |
+| `JARVIS_ALLOWED_EMAILS` | on public deploys | Comma-separated accounts allowed to use the API. Others get 403, so they can't spend your AI quota. Also consider turning off sign-ups in Supabase. |
 | `JARVIS_LOCAL_AGENT_URL` | – | Default agent URL shown in the UI (`http://localhost:3847`). |
 | `TAVILY_API_KEY` | – | Real web search (free tier). Falls back to Wikipedia search. |
 | `GITHUB_USERNAME`, `GITHUB_TOKEN` | – | Read-only GitHub tool. |
@@ -198,6 +199,8 @@ The wake word is always spotted by the browser recognizer. In Whisper mode, the 
   - `read`: runs immediately.
   - `write`: runs immediately unless Settings requires approval (files are on by default).
   - `dangerous`: always asks. Publishing social posts can never skip approval.
+- **Prompt injection:** some tools return outside content (web search, files, command output, screen, clipboard, GitHub). After one of them runs, any action in the same turn that changes something needs your approval, and the dialog says why. The system prompt also tells the model that tool output is data, never instructions.
+- **Headers:** a strict Content-Security-Policy (only same-origin, Supabase and the local agent), `nosniff`, a referrer policy and a permissions policy are set in `vercel.json`.
 - **Untrusted tool calls:** every model tool call is schema-validated (zod) before anything runs. Unknown tools and bad parameters are rejected.
 - **Terminal pipeline:** model → tool call → `classifyCommand` → permission check → approval dialog → agent re-validates → `execFile`. The agent never trusts the server's classification.
   - **Blocked always:** `rm`, `sudo`, `mkfs`, `diskutil`, `shutdown`/`reboot`, `security` (keychain), `osascript`, shells, `env`/`xargs`, inline interpreter code (`python -c`, `node -e`), `find -delete/-exec`, destructive git, anything touching credential paths (`.ssh`, `.env`, keychains, `*.pem`), and any `; | & $ \` > <`.
@@ -262,6 +265,17 @@ npm run typecheck
 npm run build
 ```
 Tests mock all network calls and use no secrets.
+
+### Model evals
+
+`evals/commands.ts` lists about 30 real phrases with what JARVIS should do. It covers tool choice and key arguments, plus phrases where the right move is to ask instead of act (mis-heard speech, credentials, unsupported platforms). The runner scores any provider or model against it, using the real system prompt and tool selection:
+
+```bash
+npm run eval -- --provider=gemini --model=gemini-3.5-flash-lite
+npm run eval -- --provider=groq --model=openai/gpt-oss-120b
+```
+
+Run it before changing a model, the prompt or a tool description, and add a case whenever JARVIS gets something wrong.
 
 ## Troubleshooting
 
