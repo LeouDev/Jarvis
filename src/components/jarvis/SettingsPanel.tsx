@@ -1,0 +1,141 @@
+import { Lock, LogOut, Volume2 } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import type { Settings } from '../../../shared/types';
+import type { ServerConfig } from '../../hooks/useSettings';
+import { supabase } from '../../lib/supabase';
+import { voice } from '../../lib/voice';
+import { ProviderSelector } from './ProviderSelector';
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="glass space-y-4 p-5">
+      <h3 className="hud-label">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function Toggle({ label, hint, checked, onChange, locked }: { label: string; hint?: string; checked: boolean; onChange?: (v: boolean) => void; locked?: boolean }) {
+  return (
+    <label className={`flex items-center gap-4 ${locked ? 'opacity-70' : 'cursor-pointer'}`}>
+      <div className="flex-1">
+        <div className="flex items-center gap-1.5 text-sm text-white/90">{label}{locked && <Lock className="size-3 text-faint" />}</div>
+        {hint && <div className="text-xs text-faint">{hint}</div>}
+      </div>
+      <input type="checkbox" className="peer sr-only" checked={checked} disabled={locked} onChange={(e) => onChange?.(e.target.checked)} />
+      <span className="relative h-6 w-10 rounded-full bg-white/10 transition peer-checked:bg-arc peer-focus-visible:ring-2 peer-focus-visible:ring-glow after:absolute after:top-1 after:left-1 after:size-4 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-4" />
+    </label>
+  );
+}
+
+interface Props {
+  settings: Settings;
+  update: (patch: (s: Settings) => Settings) => void;
+  config: ServerConfig | null;
+  email: string;
+  displayName: string;
+  onDisplayName: (name: string) => void;
+  onActivityCleared: () => void;
+}
+
+export function SettingsPanel({ settings, update, config, email, displayName, onDisplayName, onActivityCleared }: Props) {
+  const [voices, setVoices] = useState<string[]>(voice.voices());
+  useEffect(() => {
+    if (!voice.supportsOutput) return;
+    const load = () => setVoices(voice.voices());
+    speechSynthesis.addEventListener('voiceschanged', load);
+    return () => speechSynthesis.removeEventListener('voiceschanged', load);
+  }, []);
+
+  const clearActivity = async () => {
+    if (!confirm('Delete your entire activity history? This cannot be undone.')) return;
+    await supabase.from('activity_logs').delete().gte('created_at', '1970-01-01');
+    onActivityCleared();
+  };
+
+  const select = 'rounded-lg border border-line bg-black/30 px-3 py-2 text-sm text-white focus:border-glow/50 focus:outline-none';
+
+  return (
+    <div className="space-y-4">
+      <Section title="You">
+        <label className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-white/90">
+          <span className="min-w-40 flex-1">Your name <span className="block text-xs text-faint">How JARVIS greets and addresses you</span></span>
+          <input
+            className={`${select} w-full sm:w-48`}
+            defaultValue={displayName}
+            maxLength={60}
+            placeholder="e.g. Leou"
+            onBlur={(e) => e.target.value !== displayName && onDisplayName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+            aria-label="Your name"
+          />
+        </label>
+      </Section>
+
+      <Section title="AI provider">
+        <ProviderSelector config={config} value={settings.provider} onChange={(provider) => update((s) => ({ ...s, provider }))} />
+        <p className="text-xs text-faint">If the chosen provider fails, JARVIS tries the configured fallbacks (AI_FALLBACK) and tells you.</p>
+      </Section>
+
+      <Section title="Voice">
+        <Toggle label="Speak responses" hint="Uses your browser's built-in voice" checked={settings.voice.speak} onChange={(speak) => update((s) => ({ ...s, voice: { ...s.voice, speak } }))} />
+        <div className="flex flex-wrap items-center gap-3">
+          <select className={`${select} min-w-0 flex-1`} value={settings.voice.voiceName} onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, voiceName: e.target.value } }))} aria-label="Voice">
+            <option value="">System default voice</option>
+            {voices.map((v) => <option key={v}>{v}</option>)}
+          </select>
+          <label className="flex items-center gap-2 text-sm text-dim">
+            Rate
+            <input type="range" min={0.7} max={1.4} step={0.05} value={settings.voice.rate} onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, rate: Number(e.target.value) } }))} className="accent-glow" />
+            <span className="w-8 font-mono text-xs tabular-nums">{settings.voice.rate.toFixed(2)}</span>
+          </label>
+          <button onClick={() => voice.speak('Good evening. All systems are operational.', settings.voice)} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-white/80 ring-1 ring-line hover:bg-white/5">
+            <Volume2 className="size-4" /> Test
+          </button>
+        </div>
+        {!voice.supportsInput && <p className="text-xs text-warn">This browser has no speech recognition. Voice input works in Chrome and Safari.</p>}
+      </Section>
+
+      <Section title="Memory">
+        <Toggle
+          label="Recall relevant memories automatically"
+          hint={`Adds the most relevant saved memories to each request${config?.embeddings ? ' (semantic search on)' : ' (keyword search; add GEMINI_API_KEY for semantic search)'}`}
+          checked={settings.memory.autoRecall}
+          onChange={(autoRecall) => update((s) => ({ ...s, memory: { autoRecall } }))}
+        />
+        <p className="text-xs text-faint">JARVIS only saves a memory when you explicitly ask, and refuses passwords, keys and tokens.</p>
+      </Section>
+
+      <Section title="Require approval before">
+        <Toggle label="Publishing social posts" checked locked hint="Always required" />
+        <Toggle label="Sending messages" checked locked hint="Always required" />
+        <Toggle label="Creating or modifying files" checked={settings.approvals.files} onChange={(files) => update((s) => ({ ...s, approvals: { ...s.approvals, files } }))} />
+        <Toggle
+          label="Running terminal commands"
+          hint="When off, only read-only commands (pwd, ls, git status…) skip the prompt. Anything else always asks; destructive commands are blocked."
+          checked={settings.approvals.terminal}
+          onChange={(terminal) => update((s) => ({ ...s, approvals: { ...s.approvals, terminal } }))}
+        />
+      </Section>
+
+      <Section title="Social">
+        <label className="flex items-center gap-4 text-sm text-white/90">
+          <span className="flex-1">Default platform</span>
+          <select className={select} value={settings.social.defaultPlatform} onChange={(e) => update((s) => ({ ...s, social: { defaultPlatform: e.target.value } }))}>
+            <option value="facebook">Facebook</option>
+          </select>
+        </label>
+      </Section>
+
+      <Section title="Activity history & account">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="flex-1 text-sm text-dim">{email}</span>
+          <button onClick={clearActivity} className="rounded-lg px-3 py-2 text-sm text-dim ring-1 ring-line hover:text-danger">Clear activity</button>
+          <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-white/80 ring-1 ring-line hover:bg-white/5">
+            <LogOut className="size-4" /> Sign out
+          </button>
+        </div>
+      </Section>
+    </div>
+  );
+}

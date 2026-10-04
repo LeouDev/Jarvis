@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import { decideApproval, getTool, planToolCall, selectTools, toAITool, TOOLS } from '../server/tools';
+import { DEFAULT_SETTINGS, mergeSettings } from '../shared/types';
+
+const call = (name: string, args: object) => ({ id: 'c1', type: 'function' as const, function: { name, arguments: JSON.stringify(args) } });
+const relaxed = mergeSettings({ approvals: { files: false, terminal: false } });
+
+describe('tool registry', () => {
+  it('every tool is complete and has a valid provider schema', () => {
+    for (const t of TOOLS) {
+      expect(t.name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+      expect(t.description.length).toBeGreaterThan(10);
+      expect(['read', 'write', 'dangerous']).toContain(t.permission);
+      if (t.runOn === 'server') expect(t.execute).toBeTypeOf('function');
+      const schema = JSON.stringify(toAITool(t).parameters);
+      expect(schema).not.toContain('$schema');
+      expect(schema).not.toContain('additionalProperties');
+    }
+    expect(new Set(TOOLS.map((t) => t.name)).size).toBe(TOOLS.length);
+  });
+
+  it('loads only relevant tools', () => {
+    const names = (text: string) => selectTools(text).map((t) => t.name);
+    expect(names('Hello JARVIS')).toEqual(['searchMemory', 'saveMemory', 'deleteMemory']);
+    expect(names('Open VS Code')).toContain('openApplication');
+    expect(names('Create a Facebook post for my 13C project')).toContain('social_publish');
+    expect(names('Run a safe command to show my current directory')).toContain('runTerminal');
+    expect(names('What projects am I working on?')).not.toContain('runTerminal');
+  });
+});
+
+describe('permissions', () => {
+  it('social publishing always needs approval, whatever the settings', () => {
+    const plan = planToolCall(call('social_publish', { platform: 'facebook', caption: 'Hi' }), relaxed);
+    expect(plan).toMatchObject({ kind: 'pending', needsApproval: true });
+    expect(decideApproval(getTool('social_publish')!, {}, relaxed).decision).toBe('approve');
+  });
+
+  it('terminal: blocked, approval and settings-dependent safe commands', () => {
+    expect(planToolCall(call('runTerminal', { command: 'rm -rf ~' }), DEFAULT_SETTINGS).kind).toBe('blocked');
+    expect(planToolCall(call('runTerminal', { command: 'npm install' }), relaxed)).toMatchObject({ kind: 'pending', needsApproval: true });
+    expect(planToolCall(call('runTerminal', { command: 'pwd' }), DEFAULT_SETTINGS)).toMatchObject({ kind: 'pending', needsApproval: true });
+    expect(planToolCall(call('runTerminal', { command: 'pwd' }), relaxed)).toMatchObject({ kind: 'pending', needsApproval: false });
+  });
+
+  it('agent tools never execute on the server; read tools on the server run immediately', () => {
+    expect(planToolCall(call('openApplication', { app: 'Visual Studio Code' }), DEFAULT_SETTINGS)).toMatchObject({ kind: 'pending', needsApproval: false });
+    expect(planToolCall(call('createFile', { path: '/x', content: '' }), DEFAULT_SETTINGS)).toMatchObject({ kind: 'pending', needsApproval: true });
+    expect(planToolCall(call('getCurrentTime', {}), DEFAULT_SETTINGS).kind).toBe('execute');
+  });
+
+  it('rejects unknown tools and invalid parameters', () => {
+    expect(planToolCall(call('formatDisk', {}), DEFAULT_SETTINGS).kind).toBe('invalid');
+    expect(planToolCall(call('saveMemory', { content: '', category: 'x' }), DEFAULT_SETTINGS).kind).toBe('invalid');
+    expect(planToolCall({ ...call('saveMemory', {}), function: { name: 'saveMemory', arguments: '{oops' } }, DEFAULT_SETTINGS).kind).toBe('invalid');
+    expect(planToolCall(call('social_publish', { platform: 'myspace', caption: 'x' }), DEFAULT_SETTINGS).kind).toBe('invalid');
+  });
+});

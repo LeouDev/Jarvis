@@ -1,0 +1,14 @@
+node_modules
+dist
+.vercel
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage
+# Local agent secrets and machine-specific config
+local-agent/.agent-token
+local-agent/config/agent.config.json
+# Supabase CLI cache
+supabase/.temp
