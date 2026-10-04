@@ -33,7 +33,13 @@ const RecognitionCtor: (new () => Recognition) | undefined =
   typeof window !== 'undefined' ? (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition : undefined;
 
 // "Jarvis" plus the ways recognizers commonly mishear it (incl. b/v swaps); captures what follows.
-export const WAKE = /\b(jarvis|jarvas|jarvys|jarves|javis|jervis|jarbis|jarbes|jarvi)\b[\s,.!?]*(.*)$/i;
+const NAMES = 'jarvis|jarvas|jarvys|jarves|javis|jervis|jarbis|jarbes|jarvi';
+export const WAKE = new RegExp(`\\b(${NAMES})\\b[\\s,.!?]*(.*)$`, 'i');
+/** Same, but only when the utterance *starts* with the name ("Hey Jarvis, …"). */
+const LEADING_WAKE = new RegExp(`^\\s*(?:(?:hey|hi|ok|okay)[\\s,]+)?(${NAMES})\\b[\\s,.!?]*(.*)$`, 'i');
+
+/** Strips a leading "(hey) Jarvis" from a captured command. Returns '' when only the name was said. */
+export const stripWake = (text: string) => text.match(LEADING_WAKE)?.[2].trim() ?? text.trim();
 
 /** The command after the wake word in the first alternative that contains it, or null. */
 export function findWake(alternatives: string[]): string | null {
@@ -47,7 +53,7 @@ export function findWake(alternatives: string[]): string | null {
 const alternativesOf = (result: ArrayLike<{ transcript: string }>) => Array.from(result, (a) => a.transcript);
 
 // Capture timing: stop after this pause once you've started speaking; give up if nothing is said.
-const PAUSE_MS = 1600;
+const PAUSE_MS = 2000;
 const NO_SPEECH_MS = 8000;
 
 const RECOGNITION_ERRORS: Record<string, string> = {
@@ -162,39 +168,40 @@ export class BrowserVoiceProvider implements VoiceProvider {
       const r = new RecognitionCtor();
       current = r;
       const startedAt = Date.now();
-      let armed = false;
+      // After the name is heard, collect every following phrase until the speaker actually stops.
+      let wakeAt = -1; // index of the result that contained the name
+      const parts = new Map<number, string>();
+      let lastHeard = 0;
       let ending = false;
-      let graceTimer: ReturnType<typeof setTimeout> | undefined;
       const finish = () => {
         if (ending) return;
         ending = true;
-        clearTimeout(graceTimer);
+        heard = [...parts.entries()].sort(([a], [b]) => a - b).map(([, t]) => t).join(' ').trim();
         r.stop(); // hand the mic over only once this session has fully ended (see onend)
       };
+      const watchdog = setInterval(() => {
+        if (wakeAt < 0 || ending) return;
+        const quiet = Date.now() - lastHeard;
+        // Short pause ends the command; a longer one is allowed right after the name ("Jarvis… open VS Code").
+        if (quiet > (parts.size && [...parts.values()].some(Boolean) ? PAUSE_MS : NO_SPEECH_MS)) finish();
+      }, 200);
       r.lang = lang || navigator.language || 'en-US';
       r.continuous = true;
       r.interimResults = true;
       r.maxAlternatives = 5; // "Jarvis" is often the 2nd or 3rd guess
       r.onresult = (e) => {
+        lastHeard = Date.now();
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const result = e.results[i];
           const alts = alternativesOf(result);
           onHeard?.(alts[0] ?? '');
-          const command = findWake(alts);
-          if (command !== null && !armed) {
-            armed = true;
+          if (wakeAt < 0) {
+            if (findWake(alts) === null) continue;
+            wakeAt = i;
             onArmed?.();
           }
-          if (!result.isFinal) continue;
-          if (heard === null && armed) {
-            heard = command ?? '';
-            // "Jarvis…" then a pause: give the command a moment to arrive in this same session.
-            if (heard) finish();
-            else graceTimer = setTimeout(finish, 1500);
-          } else if (heard === '') {
-            heard = (alts[0] ?? '').trim();
-            finish();
-          }
+          if (i === wakeAt) parts.set(i, findWake(alts) ?? ''); // text after the name in the wake phrase
+          else if (i > wakeAt) parts.set(i, (alts[0] ?? '').trim()); // interim text counts too, finals overwrite it
         }
       };
       r.onerror = (e) => {
@@ -204,8 +211,10 @@ export class BrowserVoiceProvider implements VoiceProvider {
         }
       };
       r.onend = () => {
-        clearTimeout(graceTimer);
-        if (heard !== null) return onWake(heard);
+        clearInterval(watchdog);
+        if (wakeAt >= 0 && !ending && !stopped) finish(); // session ended on its own mid-command
+        if (heard) return onWake(heard);
+        heard = null; // only the name, then silence: keep listening for the name
         if (stopped) return;
         // Browsers end long sessions on their own; restart, backing off if it keeps dying immediately.
         quickEnds = Date.now() - startedAt < 2000 ? quickEnds + 1 : 0;

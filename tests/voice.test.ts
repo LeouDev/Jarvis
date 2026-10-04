@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findWake, speakable, WAKE } from '../src/lib/voice';
+import { findWake, speakable, stripWake, WAKE } from '../src/lib/voice';
 
 const command = (heard: string) => heard.match(WAKE)?.[2].trim() ?? null;
 
@@ -24,6 +24,15 @@ describe('wake word', () => {
   it('ignores speech without the wake word', () => {
     expect(command('I told Travis about the project')).toBeNull();
     expect(command('open VS Code')).toBeNull();
+  });
+});
+
+describe('captured commands', () => {
+  it('drops a leading name but keeps it elsewhere', () => {
+    expect(stripWake('Jarvis')).toBe('');
+    expect(stripWake('hey Jarvis, open VS Code')).toBe('open VS Code');
+    expect(stripWake('open VS Code')).toBe('open VS Code');
+    expect(stripWake('tell Jarvis fans the news')).toBe('tell Jarvis fans the news');
   });
 });
 

@@ -3,7 +3,7 @@ import type { ActionResolution, ChatRequest, PendingAction, Settings, ToolExecut
 import { runAgentTool } from '../lib/agent';
 import { streamChat } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import { chime, NoSpeechError, voice } from '../lib/voice';
+import { chime, NoSpeechError, stripWake, voice } from '../lib/voice';
 
 export type JarvisState = 'idle' | 'listening' | 'processing' | 'thinking' | 'speaking' | 'executing';
 
@@ -148,7 +148,12 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     try {
       const heard = await voice.listen({ onInterim: setInterim, lang: settingsRef.current.voice.lang });
       setInterim('');
-      if (heard) return send(heard, true);
+      const command = stripWake(heard); // "Jarvis, open VS Code" → "open VS Code"
+      if (heard && !command) {
+        chime(); // only the name was said: keep listening for the instruction
+        return capture(true);
+      }
+      if (command) return send(command, true);
       setState('idle');
       if (!quiet) setError("I didn't hear anything. Check that this site may use your microphone (voice works in Chrome and Safari), or type instead.");
     } catch (err) {
@@ -194,8 +199,7 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
       onHeard: showHeard,
       onWake: (command) => {
         setHeard('');
-        if (command) void latest.current.send(command, true);
-        else void latest.current.capture(true);
+        if (command) void latest.current.send(command, true); // name alone + silence: just keep waiting
       },
       onError: setError,
     });
