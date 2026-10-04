@@ -144,7 +144,10 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
       const heard = await voice.listen({ onInterim: setInterim });
       setInterim('');
       if (heard) await send(heard);
-      else setState('idle');
+      else {
+        setState('idle');
+        setError("I didn't hear anything. Check that this site may use your microphone (voice works in Chrome and Safari), or type instead.");
+      }
     } catch (err) {
       setInterim('');
       setError((err as Error).message);

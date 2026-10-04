@@ -57,7 +57,13 @@ export class BrowserVoiceProvider implements VoiceProvider {
       };
       r.onerror = (e) => {
         if (e.error === 'no-speech' || e.error === 'aborted') return;
-        reject(new Error(e.error === 'not-allowed' ? 'Microphone access was denied. Allow it in your browser settings.' : `Voice input failed (${e.error}).`));
+        const reasons: Record<string, string> = {
+          'not-allowed': 'Microphone access was denied. Allow it for this site in your browser settings.',
+          'audio-capture': 'No microphone was found.',
+          'service-not-allowed': 'Speech recognition is blocked in this browser. Try Chrome or Safari.',
+          network: "Speech recognition couldn't reach its service. Check your connection.",
+        };
+        reject(new Error(reasons[e.error] ?? `Voice input failed (${e.error}).`));
       };
       r.onend = () => {
         this.recognition = null;
