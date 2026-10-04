@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { transcribe, vocabulary, whisperLanguage } from '../server/voice/transcribe';
+import { extractTerms, isLooping, looksLikeBleed, transcribe, vocabulary, whisperLanguage } from '../server/voice/transcribe';
 import { downsample, encodeWav } from '../src/lib/whisper';
 
 afterEach(() => {
@@ -47,13 +47,33 @@ describe('Whisper transcription', () => {
     await expect(transcribe(audio)).rejects.toThrow(/GROQ_API_KEY/);
   });
 
-  it('builds vocabulary from saved memories and maps languages', async () => {
-    const limit = vi.fn().mockResolvedValue({ data: [{ content: 'Leou is building 13C.' }, { content: 'Kassix is a POS app.' }] });
+  it('builds a terms-only vocabulary from saved memories and maps languages', async () => {
+    const limit = vi.fn().mockResolvedValue({ data: [{ content: "Kassix POS: 60 days free, then 149 pesos a month." }, { content: "13C's website is 13c.online. AIR/Rally too." }] });
     const db = { from: () => ({ select: () => ({ in: () => ({ order: () => ({ limit }) }) }) }) } as any;
     const vocab = await vocabulary(db, 'Leou');
-    expect(vocab).toContain('Jarvis, Leou.');
-    expect(vocab).toContain('Kassix is a POS app.');
-    expect(vocab.length).toBeLessThanOrEqual(800);
+    expect(vocab).toBe('Jarvis, VS Code, GitHub, Facebook, Spotify, Vercel, Supabase, Leou, Kassix, POS, 13C, 13c.online, AIR/Rally');
+    expect(vocab).not.toMatch(/days|pesos|60|149/); // no sentences or numbers for Whisper to copy
     expect([whisperLanguage('en-PH'), whisperLanguage(''), whisperLanguage('fil-PH')]).toEqual(['en', 'en', 'tl']);
+  });
+
+  it('detects hint echoes and loops, and retries without the hint', async () => {
+    expect(extractTerms(['Remember that Dicta is my social quote app'])).toEqual(['Dicta']);
+    expect(looksLikeBleed('14C.online. VS Code', 'Jarvis, VS Code, 14C.online')).toBe(true);
+    expect(looksLikeBleed('Open VS Code', 'Jarvis, VS Code')).toBe(false);
+    expect(isLooping('60 days free. 60 days. 60 days. 60 days.')).toBe(true);
+    expect(isLooping('Open VS Code. Then open Safari.')).toBe(false);
+
+    process.env.GROQ_API_KEY = 'test';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ text: '60 days free, then 149 pesos. 60 days. 60 days. 60 days.' }))
+      .mockResolvedValueOnce(Response.json({ text: "Hey Jarvis, let's go." }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await transcribe(audio, { prompt: 'Jarvis, Kassix', language: 'en' })).toBe("Hey Jarvis, let's go.");
+    expect((fetchMock.mock.calls[1][1].body as FormData).get('prompt')).toBeNull();
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ text: 'Kassix.' })).mockResolvedValueOnce(Response.json({ text: '.' })));
+    expect(await transcribe(audio, { prompt: 'Jarvis, Kassix' })).toBe(''); // noise: echo, then nothing
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ text: '1' })));
+    expect(await transcribe(audio, { prompt: 'Jarvis' })).toBe('');
   });
 });
