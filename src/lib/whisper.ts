@@ -61,6 +61,9 @@ const micError = (err: unknown) => {
 
 /** Shared microphone: a ring buffer of the last 30 s plus a simple voice-activity detector. Times are sample indices. */
 class Mic {
+  /** Which input device the browser gave us, and its native rate (for diagnostics). */
+  device = '';
+  inputRate = 0;
   total = 0;
   lastVoice = -1;
   speechStart = -1;
@@ -99,6 +102,8 @@ class Mic {
       window.addEventListener('pointerdown', resume, { once: true });
       window.addEventListener('keydown', resume, { once: true });
     }
+    this.device = stream.getAudioTracks()[0]?.label ?? '';
+    this.inputRate = ctx.sampleRate;
     const source = ctx.createMediaStreamSource(stream);
     const node = ctx.createScriptProcessor(4096, 1, 1); // ponytail: deprecated but universal; AudioWorklet if it ever goes away
     const ratio = ctx.sampleRate / RATE;
@@ -148,6 +153,23 @@ class Mic {
 
 export const mic = new Mic();
 
+/** Loudest sample; near-zero means the wrong or a muted microphone. */
+const peak = (samples: Float32Array) => samples.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+const MIN_PEAK = 0.02;
+
+/** Settings → Test microphone: record a few seconds exactly like a command, for playback + transcription. */
+export async function recordSample(ms = 4000) {
+  const release = await mic.acquire();
+  try {
+    const from = mic.total;
+    await new Promise((r) => setTimeout(r, ms));
+    const samples = mic.slice(from, mic.total);
+    return { wav: encodeWav(samples), device: mic.device, inputRate: mic.inputRate, seconds: samples.length / RATE, peak: peak(samples) };
+  } finally {
+    release();
+  }
+}
+
 export class WhisperVoiceProvider extends BrowserVoiceProvider {
   private cancel: (() => void) | null = null;
 
@@ -177,6 +199,7 @@ export class WhisperVoiceProvider extends BrowserVoiceProvider {
       });
       onEnd?.();
       const audio = mic.slice(Math.max(from, mic.speechStart - 0.3 * RATE), until);
+      if (peak(audio) < MIN_PEAK) throw new NoSpeechError(); // don't let Whisper hallucinate on silence
       const text = await transcribeAudio(encodeWav(audio), lang);
       if (!text) throw new NoSpeechError();
       return text;
@@ -205,7 +228,7 @@ export class WhisperVoiceProvider extends BrowserVoiceProvider {
       },
       onWake: (command) => {
         const audio = release && utteranceStart >= 0 ? mic.slice(utteranceStart, mic.total) : null;
-        if (!audio || audio.length < RATE / 2) return opts.onWake(command);
+        if (!audio || audio.length < RATE / 2 || peak(audio) < MIN_PEAK) return opts.onWake(command);
         transcribeAudio(encodeWav(audio), opts.lang)
           .then((text) => opts.onWake(stripWake(text) || command))
           .catch(() => opts.onWake(command));

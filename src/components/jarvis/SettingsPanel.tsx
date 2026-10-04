@@ -4,6 +4,7 @@ import type { Settings } from '../../../shared/types';
 import type { ServerConfig } from '../../hooks/useSettings';
 import { supabase } from '../../lib/supabase';
 import { voice } from '../../lib/voice';
+import { MicTest } from './MicTest';
 import { ProviderSelector } from './ProviderSelector';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -138,6 +139,7 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
             <option value="fil-PH">Filipino</option>
           </select>
         </label>
+        <MicTest lang={settings.voice.lang} whisper={Boolean(config?.stt)} />
         {!voice.supportsInput && <p className="text-xs text-warn">This browser has no speech recognition. Voice input works in Chrome and Safari.</p>}
       </Section>
 
