@@ -238,5 +238,5 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
     setMessages((data ?? []).map((m) => ({ id: m.id, role: m.role, content: m.content, executions: [], notices: [] })));
   };
 
-  return { messages, state, interim, error, approval, decide, send, listen, interrupt, busy, conversationId, newConversation, openConversation, wakeWord, heard };
+  return { messages, state, interim, error, approval, decide, send, listen, interrupt, busy, conversationId, newConversation, openConversation, wakeWord, heard, engine: stt === whisperVoice ? 'Whisper' : 'Browser' };
 }

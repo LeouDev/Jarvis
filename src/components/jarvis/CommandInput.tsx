@@ -7,11 +7,13 @@ interface Props {
   interim: string;
   busy: boolean;
   voiceSupported: boolean;
+  /** Shown while listening so it's obvious which speech engine is active. */
+  engine?: string;
   onSend: (text: string) => void;
   onListen: () => void;
 }
 
-export function CommandInput({ state, interim, busy, voiceSupported, onSend, onListen }: Props) {
+export function CommandInput({ state, interim, busy, voiceSupported, engine, onSend, onListen }: Props) {
   const [text, setText] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const listening = state === 'listening';
@@ -42,7 +44,7 @@ export function CommandInput({ state, interim, busy, voiceSupported, onSend, onL
         value={listening ? interim : text}
         onChange={(e) => setText(e.target.value)}
         readOnly={listening}
-        placeholder={listening ? 'Listening…' : 'Type a command…'}
+        placeholder={listening ? `Listening${engine ? ` · ${engine}` : ''}…` : state === 'processing' && engine === 'Whisper' ? 'Transcribing…' : 'Type a command…'}
         aria-label="Message JARVIS"
         className="min-w-0 flex-1 bg-transparent px-2 text-[15px] text-white placeholder:text-faint focus:outline-none"
       />

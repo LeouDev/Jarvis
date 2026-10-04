@@ -93,6 +93,12 @@ class Mic {
     });
     const ctx = new AudioContext();
     if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+    // Started without a click (e.g. wake word on page load): browsers keep audio paused until the first interaction.
+    if (ctx.state === 'suspended') {
+      const resume = () => void ctx.resume();
+      window.addEventListener('pointerdown', resume, { once: true });
+      window.addEventListener('keydown', resume, { once: true });
+    }
     const source = ctx.createMediaStreamSource(stream);
     const node = ctx.createScriptProcessor(4096, 1, 1); // ponytail: deprecated but universal; AudioWorklet if it ever goes away
     const ratio = ctx.sampleRate / RATE;
