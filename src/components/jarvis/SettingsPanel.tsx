@@ -105,6 +105,21 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
             <Volume2 className="size-4" /> Test
           </button>
         </div>
+        <label className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-white/90">
+          <span className="min-w-40 flex-1">
+            Speech recognition language
+            <span className="block text-xs text-faint">Match your accent. English (Philippines) often hears Filipino-accented English better.</span>
+          </span>
+          <select className={`${select} w-full sm:w-56`} value={settings.voice.lang} onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, lang: e.target.value } }))} aria-label="Speech recognition language">
+            <option value="">Browser default ({typeof navigator === 'undefined' ? '' : navigator.language})</option>
+            <option value="en-PH">English (Philippines)</option>
+            <option value="en-US">English (US)</option>
+            <option value="en-GB">English (UK)</option>
+            <option value="en-AU">English (Australia)</option>
+            <option value="en-IN">English (India)</option>
+            <option value="fil-PH">Filipino</option>
+          </select>
+        </label>
         {!voice.supportsInput && <p className="text-xs text-warn">This browser has no speech recognition. Voice input works in Chrome and Safari.</p>}
       </Section>
 

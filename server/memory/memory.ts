@@ -37,6 +37,9 @@ export async function saveMemory(
   if (!content) throw new UserFacingError('There is nothing to remember.');
   if (looksLikeSecret(content))
     throw new UserFacingError("I can't store passwords, API keys, tokens or other credentials in memory.");
+  // Models sometimes repeat a saveMemory call; keep one copy of each fact.
+  const { data: existing } = await db.from('memories').select('id, content, category, importance').eq('content', content).limit(1);
+  if (existing?.length) return existing[0];
   const { data, error } = await db
     .from('memories')
     .insert({ content, category: m.category ?? 'other', importance: m.importance ?? 3, embedding: await embed(content) })

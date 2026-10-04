@@ -146,7 +146,7 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     setInterim('');
     setState('listening');
     try {
-      const heard = await voice.listen({ onInterim: setInterim });
+      const heard = await voice.listen({ onInterim: setInterim, lang: settingsRef.current.voice.lang });
       setInterim('');
       if (heard) return send(heard, true);
       setState('idle');
@@ -176,9 +176,11 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
   const latest = useRef({ send, capture });
   latest.current = { send, capture };
   const wakeWord = settings.voice.wakeWord && voice.supportsInput;
+  const lang = settings.voice.lang;
   useEffect(() => {
     if (!wakeWord || state !== 'idle' || approval) return;
     return voice.listenForWakeWord({
+      lang,
       onWake: (command) => {
         chime();
         if (command) void latest.current.send(command, true);
@@ -186,7 +188,7 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
       },
       onError: setError,
     });
-  }, [wakeWord, state, approval]);
+  }, [wakeWord, state, approval, lang]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && interrupt();

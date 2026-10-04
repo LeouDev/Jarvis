@@ -5,7 +5,7 @@ export interface Settings {
   /** Preferred AI provider id; empty = server default (AI_PROVIDER). */
   provider: string;
   /** followUp: keep listening briefly after a spoken reply. wakeWord: always listen for "Jarvis" while open. */
-  voice: { speak: boolean; voiceName: string; rate: number; followUp: boolean; wakeWord: boolean };
+  voice: { speak: boolean; voiceName: string; rate: number; followUp: boolean; wakeWord: boolean; lang: string };
   memory: { autoRecall: boolean };
   /** Posting and sending messages always require approval; these two are user-adjustable. */
   approvals: { files: boolean; terminal: boolean };
@@ -14,7 +14,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   provider: '',
-  voice: { speak: true, voiceName: '', rate: 1, followUp: true, wakeWord: false },
+  voice: { speak: true, voiceName: '', rate: 1, followUp: true, wakeWord: false, lang: '' }, // lang '' = browser language
   memory: { autoRecall: true },
   approvals: { files: true, terminal: true },
   social: { defaultPlatform: 'facebook' },

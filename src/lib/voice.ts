@@ -7,7 +7,7 @@ export interface VoiceProvider {
   listen(opts: { onInterim?: (text: string) => void; lang?: string }): Promise<string>;
   stopListening(): void;
   /** Listens continuously for the wake word; calls onWake with whatever followed it. Returns a stop function. */
-  listenForWakeWord(opts: { onWake: (command: string) => void; onError?: (message: string) => void }): () => void;
+  listenForWakeWord(opts: { onWake: (command: string) => void; onError?: (message: string) => void; lang?: string }): () => void;
   speak(text: string, opts?: { voiceName?: string; rate?: number }): Promise<void>;
   stopSpeaking(): void;
   voices(): string[];
@@ -114,7 +114,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
     this.recognition?.stop();
   }
 
-  listenForWakeWord({ onWake, onError }: { onWake: (command: string) => void; onError?: (message: string) => void }) {
+  listenForWakeWord({ onWake, onError, lang }: { onWake: (command: string) => void; onError?: (message: string) => void; lang?: string }) {
     if (!RecognitionCtor) {
       onError?.('Wake word needs speech recognition (Chrome or Safari).');
       return () => {};
@@ -128,7 +128,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
       const r = new RecognitionCtor();
       current = r;
       const startedAt = Date.now();
-      r.lang = navigator.language || 'en-US';
+      r.lang = lang || navigator.language || 'en-US';
       r.continuous = true;
       r.interimResults = false;
       r.onresult = (e) => {

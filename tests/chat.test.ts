@@ -33,10 +33,19 @@ describe('memory safety', () => {
   it('stores explicit memories with category and importance', async () => {
     const single = vi.fn().mockResolvedValue({ data: { id: 'm1', content: 'Dicta is my social quote app', category: 'projects', importance: 4 }, error: null });
     const insert = vi.fn(() => ({ select: () => ({ single }) }));
-    const db = { from: () => ({ insert }) } as any;
+    const none = { select: () => ({ eq: () => ({ limit: async () => ({ data: [] }) }) }) };
+    const db = { from: () => ({ insert, ...none }) } as any;
     const m = await saveMemory(db, { content: ' Dicta is my social quote app ', category: 'projects', importance: 4 });
     expect(m.id).toBe('m1');
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({ content: 'Dicta is my social quote app', category: 'projects', importance: 4 }));
+  });
+
+  it('does not store the same fact twice', async () => {
+    const insert = vi.fn();
+    const found = { id: 'm1', content: 'Dicta is my social quote app', category: 'projects', importance: 4 };
+    const db = { from: () => ({ insert, select: () => ({ eq: () => ({ limit: async () => ({ data: [found] }) }) }) }) } as any;
+    expect(await saveMemory(db, { content: 'Dicta is my social quote app' })).toEqual(found);
+    expect(insert).not.toHaveBeenCalled();
   });
 });
 
