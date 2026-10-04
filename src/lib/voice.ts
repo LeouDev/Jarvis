@@ -32,6 +32,12 @@ const RECOGNITION_ERRORS: Record<string, string> = {
   network: "Speech recognition couldn't reach its service. Check your connection.",
 };
 
+export class NoSpeechError extends Error {
+  constructor() {
+    super("I couldn't hear any speech. Check which microphone the browser uses (click the icon left of the address bar → Microphone, or your OS sound input) and that your headset isn't muted.");
+  }
+}
+
 /** Short rising tone confirming the wake word was heard. */
 export function chime() {
   try {
@@ -80,6 +86,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
       r.interimResults = true;
       r.continuous = false;
       let finalText = '';
+      let silent = false;
       r.onresult = (e) => {
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -89,12 +96,15 @@ export class BrowserVoiceProvider implements VoiceProvider {
         onInterim?.(finalText + interim);
       };
       r.onerror = (e) => {
+        if (e.error === 'no-speech') silent = true;
         if (e.error === 'no-speech' || e.error === 'aborted') return;
         reject(new Error(RECOGNITION_ERRORS[e.error] ?? `Voice input failed (${e.error}).`));
       };
       r.onend = () => {
         this.recognition = null;
-        resolve(finalText.trim());
+        // The mic delivered audio but no speech: usually the wrong input device or a muted headset.
+        if (silent && !finalText.trim()) reject(new NoSpeechError());
+        else resolve(finalText.trim());
       };
       r.start();
     });

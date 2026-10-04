@@ -3,7 +3,7 @@ import type { ActionResolution, ChatRequest, PendingAction, Settings, ToolExecut
 import { runAgentTool } from '../lib/agent';
 import { streamChat } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import { chime, voice } from '../lib/voice';
+import { chime, NoSpeechError, voice } from '../lib/voice';
 
 export type JarvisState = 'idle' | 'listening' | 'processing' | 'thinking' | 'speaking' | 'executing';
 
@@ -153,8 +153,8 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
       if (!quiet) setError("I didn't hear anything. Check that this site may use your microphone (voice works in Chrome and Safari), or type instead.");
     } catch (err) {
       setInterim('');
-      setError((err as Error).message);
       setState('idle');
+      if (!(quiet && err instanceof NoSpeechError)) setError((err as Error).message);
     }
   };
 
