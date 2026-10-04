@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { saveMemory } from '../server/memory/memory';
 import { friendlyError, resolveAction } from '../server/routes/chat';
 import { app } from '../server/app';
+import { isAllowedEmail } from '../server/lib/auth';
 import { AIUnavailableError } from '../server/ai/AIManager';
 import { UserFacingError } from '../server/lib/util';
 
@@ -60,5 +61,14 @@ describe('API', () => {
     expect(friendlyError(new AIUnavailableError('Gemini is currently unavailable.'))).toBe('Gemini is currently unavailable.');
     expect(friendlyError(new UserFacingError("Facebook isn't connected yet."))).toBe("Facebook isn't connected yet.");
     expect(friendlyError(new Error('ECONNRESET at db.internal:5432 password=...'))).not.toMatch(/ECONNRESET|password/);
+  });
+});
+
+describe('owner-only access', () => {
+  it('restricts the API to listed emails when configured', () => {
+    expect(isAllowedEmail('owner@example.com', '')).toBe(true); // not configured: any signed-in user
+    expect(isAllowedEmail('Owner@Example.com', 'owner@example.com, other@example.com')).toBe(true);
+    expect(isAllowedEmail('stranger@example.com', 'owner@example.com')).toBe(false);
+    expect(isAllowedEmail(undefined, 'owner@example.com')).toBe(false);
   });
 });

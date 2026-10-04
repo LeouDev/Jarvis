@@ -8,6 +8,7 @@ const PLATFORMS = Object.keys(SOCIAL_PROVIDERS) as [string, ...string[]];
 const label = (p: string) => SOCIAL_PROVIDERS[p]?.label ?? p;
 
 export const webSearch: JarvisTool<{ query: string; limit: number }> = {
+  untrustedOutput: true,
   name: 'webSearch', group: 'web', permission: 'read', runOn: 'server',
   description: 'Search the web for current information. Summarize the results for the user; do not dump them.',
   schema: z.object({ query: z.string().min(1).max(300), limit: z.number().int().min(1).max(8).default(5) }),
@@ -21,6 +22,7 @@ export const webSearch: JarvisTool<{ query: string; limit: number }> = {
 };
 
 export const github: JarvisTool<{ action: GithubAction; repo?: string; limit?: number }> = {
+  untrustedOutput: true,
   name: 'github', group: 'github', permission: 'read', runOn: 'server',
   description: "Read the user's GitHub: list repos, inspect a repo, branches, commits, issues, pull requests, recent activity.",
   schema: z.object({

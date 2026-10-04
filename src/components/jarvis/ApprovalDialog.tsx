@@ -34,13 +34,32 @@ function Body({ action }: { action: PendingAction }) {
         <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-black/40 p-3 font-mono text-xs text-white/70">{String(i.content).slice(0, 4000)}</pre>
       </div>
     );
-  return <pre className="overflow-auto rounded-xl border border-line bg-black/40 p-3 font-mono text-xs text-white/70">{JSON.stringify(i, null, 2)}</pre>;
+  return (
+    <div className="space-y-2">
+      <p className="text-[15px] text-white/90">{action.summary}</p>
+      <dl className="space-y-1 rounded-xl border border-line bg-black/30 p-3 text-xs">
+        {Object.entries(i).map(([k, v]) => (
+          <div key={k} className="flex gap-2">
+            <dt className="shrink-0 text-faint">{k}</dt>
+            <dd className="min-w-0 break-words font-mono text-white/75">{typeof v === 'string' ? v : JSON.stringify(v)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
 }
 
 const VERB: Record<string, [string, string]> = {
   social_publish: ['Post preview', 'Publish'],
   runTerminal: ['Run this command?', 'Run'],
   createFile: ['Create this file?', 'Create'],
+  lookAtScreen: ['Let JARVIS see your screen?', 'Allow'],
+  saveMemory: ['Save to memory?', 'Save'],
+  deleteMemory: ['Delete this memory?', 'Delete'],
+  openWebsite: ['Open this website?', 'Open'],
+  createReminder: ['Add this reminder?', 'Add'],
+  createCalendarEvent: ['Add this event?', 'Add'],
+  createNote: ['Create this note?', 'Create'],
 };
 
 export function ApprovalDialog({ action, onDecide }: { action: PendingAction | null; onDecide: (approved: boolean) => void }) {
@@ -73,6 +92,7 @@ export function ApprovalDialog({ action, onDecide }: { action: PendingAction | n
             </div>
             <h2 id="approval-title" className="mb-4 text-lg font-medium uppercase tracking-[0.18em] text-white">{title}</h2>
             <Body action={action} />
+            {action.reason && <p className="mt-3 text-xs text-warn">{action.reason}</p>}
             <div className="mt-6 flex justify-end gap-3">
               <button ref={cancel} onClick={() => onDecide(false)} className="rounded-full px-5 py-2.5 text-sm text-white/80 ring-1 ring-line transition hover:bg-white/5">
                 Cancel

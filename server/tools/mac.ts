@@ -19,6 +19,7 @@ export const openWebsite: JarvisTool<{ url: string }> = {
 };
 
 export const runTerminal: JarvisTool<{ command: string; cwd?: string }> = {
+  untrustedOutput: true,
   name: 'runTerminal', group: 'mac', permission: 'dangerous', runOn: 'agent',
   description:
     'Run ONE terminal command on the Mac (no pipes, chaining or redirection). Read-only commands like pwd, ls, git status are preferred. Destructive commands are blocked.',
@@ -33,6 +34,7 @@ export const runTerminal: JarvisTool<{ command: string; cwd?: string }> = {
 };
 
 export const readFile: JarvisTool<{ path: string }> = {
+  untrustedOutput: true,
   name: 'readFile', group: 'mac', permission: 'read', runOn: 'agent',
   description: 'Read a text file inside the allowed directories.',
   schema: z.object({ path: z.string().min(1).max(1000) }),
@@ -40,6 +42,7 @@ export const readFile: JarvisTool<{ path: string }> = {
 };
 
 export const searchFiles: JarvisTool<{ query: string; directory?: string }> = {
+  untrustedOutput: true,
   name: 'searchFiles', group: 'mac', permission: 'read', runOn: 'agent',
   description: 'Find files or folders by name inside the allowed directories (Spotlight).',
   schema: z.object({ query: z.string().min(1).max(200), directory: z.string().max(1000).optional() }),
@@ -108,6 +111,7 @@ export const createCalendarEvent: JarvisTool<{ title: string; start: string; dur
 };
 
 export const lookAtScreen: JarvisTool<{ question: string }> = {
+  untrustedOutput: true,
   name: 'lookAtScreen', group: 'macApps', permission: 'read', runOn: 'agent',
   description: "Take a screenshot of the Mac's main display and answer a question about it (e.g. what's on screen, read an error). Always asks the user first.",
   schema: z.object({ question: z.string().min(1).max(500) }),
@@ -116,6 +120,7 @@ export const lookAtScreen: JarvisTool<{ question: string }> = {
 };
 
 export const clipboard: JarvisTool<{ action: 'read' | 'write'; text?: string }> = {
+  untrustedOutput: true,
   name: 'clipboard', group: 'macApps', permission: 'write', runOn: 'agent',
   description: "Read the Mac clipboard text, or copy text to it. Won't read passwords or keys.",
   schema: z.object({ action: z.enum(['read', 'write']), text: z.string().max(100_000).optional() }),

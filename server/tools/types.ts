@@ -22,6 +22,8 @@ export interface JarvisTool<T = any> {
   summary(input: T): string;
   /** Overrides the default rule (dangerous → approve, otherwise auto). */
   approval?(input: T, settings: Settings): ApprovalDecision;
+  /** Returns text from outside the user's control (web, files, screen…) that could carry injected instructions. */
+  untrustedOutput?: boolean;
   execute?(input: T, ctx: ToolContext): Promise<ToolResult>;
 }
 

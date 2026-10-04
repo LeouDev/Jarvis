@@ -3,6 +3,12 @@ import { createMiddleware } from 'hono/factory';
 
 export type Env = { Variables: { db: SupabaseClient; user: User } };
 
+/** JARVIS_ALLOWED_EMAILS (comma-separated) keeps strangers who sign up from spending your AI quota. Unset = anyone signed in. */
+export function isAllowedEmail(email: string | undefined, allowList = process.env.JARVIS_ALLOWED_EMAILS ?? '') {
+  const allowed = allowList.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return !allowed.length || allowed.includes((email ?? '').toLowerCase());
+}
+
 /**
  * Verifies the Supabase access token and gives the route a client that acts *as the user*,
  * so Row Level Security applies to every query. The service-role key is never used.
@@ -19,6 +25,7 @@ export const requireUser = createMiddleware<Env>(async (c, next) => {
   });
   const { data, error } = await db.auth.getUser(token);
   if (error || !data.user) return c.json({ error: 'Your session has expired. Please sign in again.' }, 401);
+  if (!isAllowedEmail(data.user.email)) return c.json({ error: 'This JARVIS is private to its owner.' }, 403);
   c.set('db', db);
   c.set('user', data.user);
   await next();

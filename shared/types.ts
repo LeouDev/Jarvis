@@ -43,6 +43,8 @@ export interface PendingAction {
   permission: Permission;
   runOn: 'server' | 'agent';
   needsApproval: boolean;
+  /** Why approval is needed, when it isn't obvious from the tool. */
+  reason?: string;
 }
 
 export interface ToolExecutionView {

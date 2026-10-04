@@ -7,7 +7,8 @@ import type { AIMessage, AIToolCall } from '../ai/AIProvider.js';
 import type { Env } from '../lib/auth.js';
 import { loadSettings, logActivity, truncate, UserFacingError } from '../lib/util.js';
 import { buildContext, maybeSummarize } from '../memory/context.js';
-import { getTool, planToolCall, selectTools, toAITool } from '../tools/index.js';
+import { searchMemories } from '../memory/memory.js';
+import { getTool, planToolCall, selectTools, toAITool, untrustedSinceUser } from '../tools/index.js';
 import type { JarvisTool, ToolContext, ToolResult } from '../tools/types.js';
 import { redact } from '../../shared/policy.js';
 import type { ActionResolution, ChatEvent, ExecutionStatus, PendingAction } from '../../shared/types.js';
@@ -95,6 +96,8 @@ export async function chatRoute(c: Context<Env>) {
 
 async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Send) {
   const timezone = validTz(body.timezone);
+  // Start the memory lookup (embedding + search, ~200 ms) now instead of after the other queries.
+  const recall = body.message ? searchMemories(db, body.message, 5).catch(() => []) : null;
   const [settings, profile] = await Promise.all([loadSettings(db), db.from('users').select('display_name').maybeSingle()]);
   const ctx: ToolContext = { db, settings, timezone };
 
@@ -118,7 +121,7 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
   }
 
   const { messages, lastUserText } = await buildContext(db, conversationId, {
-    settings, timezone, name: profile.data?.display_name || 'there',
+    settings, timezone, recall, name: profile.data?.display_name || 'there',
   });
   const tools = selectTools(lastUserText).map(toAITool);
 
@@ -137,7 +140,7 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
     const pending: PendingAction[] = [];
     for (const call of res.toolCalls) {
       const name = call.function.name;
-      const plan = planToolCall(call, settings);
+      const plan = planToolCall(call, settings, untrustedSinceUser([...messages, ...results]));
       if (plan.kind === 'invalid') {
         results.push(toolMessage({ id: call.id, name }, plan.error));
       } else if (plan.kind === 'blocked') {
@@ -164,7 +167,7 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
           .select('id')
           .single();
         if (error) throw new Error(`tool_executions insert: ${error.message}`);
-        pending.push({ id: data.id, tool: name, summary, input: plan.input, permission: plan.tool.permission, runOn: plan.tool.runOn, needsApproval: plan.needsApproval });
+        pending.push({ id: data.id, tool: name, summary, input: plan.input, permission: plan.tool.permission, runOn: plan.tool.runOn, needsApproval: plan.needsApproval, reason: plan.reason });
       }
     }
     if (results.length) {

@@ -35,18 +35,28 @@ export function selectTools(text: string): JarvisTool[] {
   return TOOLS.filter((t) => groups.has(t.group));
 }
 
-export function decideApproval(tool: JarvisTool, input: unknown, settings: Settings): ApprovalDecision {
-  return tool.approval?.(input, settings) ?? { decision: tool.permission === 'dangerous' ? 'approve' : 'auto' };
+export function decideApproval(tool: JarvisTool, input: unknown, settings: Settings, untrusted = false): ApprovalDecision {
+  const d = tool.approval?.(input, settings) ?? { decision: tool.permission === 'dangerous' ? 'approve' : 'auto' };
+  // Prompt-injection guard: once outside content is in play this turn, nothing changes without a click.
+  if (untrusted && d.decision === 'auto' && tool.permission !== 'read')
+    return { decision: 'approve', reason: 'Requested after reading outside content (web, file, screen…). Check it is what you want.' };
+  return d;
+}
+
+/** Has a tool returned untrusted content since the user's last message? */
+export function untrustedSinceUser(messages: { role: string; name?: string }[]): boolean {
+  const last = messages.findLastIndex((m) => m.role === 'user');
+  return messages.slice(last + 1).some((m) => m.role === 'tool' && Boolean(getTool(m.name ?? '')?.untrustedOutput));
 }
 
 export type ToolPlan =
   | { kind: 'invalid'; error: string }
   | { kind: 'blocked'; tool: JarvisTool; input: any; reason: string }
   | { kind: 'execute'; tool: JarvisTool; input: any }
-  | { kind: 'pending'; tool: JarvisTool; input: any; needsApproval: boolean };
+  | { kind: 'pending'; tool: JarvisTool; input: any; needsApproval: boolean; reason?: string };
 
 /** Decides what happens to a model tool call. Tool parameters are never trusted: they are schema-validated first. */
-export function planToolCall(call: AIToolCall, settings: Settings): ToolPlan {
+export function planToolCall(call: AIToolCall, settings: Settings, untrusted = false): ToolPlan {
   const tool = getTool(call.function.name);
   if (!tool) return { kind: 'invalid', error: `Unknown tool "${call.function.name}".` };
   let args: unknown;
@@ -58,10 +68,10 @@ export function planToolCall(call: AIToolCall, settings: Settings): ToolPlan {
   const parsed = tool.schema.safeParse(args);
   if (!parsed.success) return { kind: 'invalid', error: `Invalid arguments: ${z.prettifyError(parsed.error)}` };
   const input = parsed.data;
-  const { decision, reason } = decideApproval(tool, input, settings);
+  const { decision, reason } = decideApproval(tool, input, settings, untrusted);
   if (decision === 'block') return { kind: 'blocked', tool, input, reason: reason ?? 'Not allowed.' };
   if (tool.runOn === 'server' && decision === 'auto') return { kind: 'execute', tool, input };
-  return { kind: 'pending', tool, input, needsApproval: decision === 'approve' };
+  return { kind: 'pending', tool, input, needsApproval: decision === 'approve', reason };
 }
 
 /** JSON Schema for the model, minus keys some providers (Gemini) reject. */
