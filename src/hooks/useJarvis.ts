@@ -3,7 +3,7 @@ import type { ActionResolution, ChatRequest, PendingAction, Settings, ToolExecut
 import { runAgentTool } from '../lib/agent';
 import { streamChat } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import { voice } from '../lib/voice';
+import { chime, voice } from '../lib/voice';
 
 export type JarvisState = 'idle' | 'listening' | 'processing' | 'thinking' | 'speaking' | 'executing';
 
@@ -34,6 +34,8 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
   const approvalResolver = useRef<((ok: boolean) => void) | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  /** The current turn started by voice: reply → keep listening for a follow-up. */
+  const voiceTurn = useRef(false);
 
   const patchLast = (fn: (m: UIMessage) => UIMessage) => setMessages((ms) => ms.map((m, i) => (i === ms.length - 1 ? fn(m) : m)));
 
@@ -97,7 +99,10 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
       // Drop a reply bubble that ended up with nothing in it.
       setMessages((ms) => ms.filter((m, i) => i !== ms.length - 1 || m.content || m.executions.length || m.notices.length));
       onTurnComplete();
-      return speak(text);
+      await speak(text);
+      // Conversation mode: after answering a spoken request, listen again without a click.
+      if (voiceTurn.current && settingsRef.current.voice.followUp) return capture(true);
+      return;
     }
     if (text.trim()) void speak(text);
     const resolutions: ActionResolution[] = [];
@@ -125,17 +130,17 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
 
   const busy = state === 'processing' || state === 'thinking' || state === 'executing' || approval !== null;
 
-  const send = async (text: string) => {
+  const send = async (text: string, viaVoice = false) => {
     const message = text.trim();
     if (!message || busy) return;
+    voiceTurn.current = viaVoice;
     voice.stopSpeaking();
     setMessages((ms) => [...ms, { id: uid(), role: 'user', content: message, executions: [], notices: [] }]);
     await run({ conversationId: convRef.current ?? undefined, message });
   };
 
-  const listen = async () => {
-    if (state === 'listening') return voice.stopListening();
-    if (busy) return;
+  /** Records one utterance and sends it. `quiet` = silence just ends listening (follow-ups, wake word). */
+  const capture = async (quiet: boolean) => {
     voice.stopSpeaking();
     setError('');
     setInterim('');
@@ -143,11 +148,9 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     try {
       const heard = await voice.listen({ onInterim: setInterim });
       setInterim('');
-      if (heard) await send(heard);
-      else {
-        setState('idle');
-        setError("I didn't hear anything. Check that this site may use your microphone (voice works in Chrome and Safari), or type instead.");
-      }
+      if (heard) return send(heard, true);
+      setState('idle');
+      if (!quiet) setError("I didn't hear anything. Check that this site may use your microphone (voice works in Chrome and Safari), or type instead.");
     } catch (err) {
       setInterim('');
       setError((err as Error).message);
@@ -155,12 +158,35 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     }
   };
 
-  /** Interrupt: stop talking/listening immediately. */
+  const listen = async () => {
+    if (state === 'listening') return voice.stopListening();
+    if (busy) return;
+    return capture(false);
+  };
+
+  /** Interrupt: stop talking/listening immediately (and don't auto-listen afterwards). */
   const interrupt = useCallback(() => {
+    voiceTurn.current = false;
     voice.stopSpeaking();
     voice.stopListening();
     setState((s) => (s === 'speaking' || s === 'listening' ? 'idle' : s));
   }, []);
+
+  // Wake word: while idle, listen for "Jarvis…" and act on whatever follows it.
+  const latest = useRef({ send, capture });
+  latest.current = { send, capture };
+  const wakeWord = settings.voice.wakeWord && voice.supportsInput;
+  useEffect(() => {
+    if (!wakeWord || state !== 'idle' || approval) return;
+    return voice.listenForWakeWord({
+      onWake: (command) => {
+        chime();
+        if (command) void latest.current.send(command, true);
+        else void latest.current.capture(true);
+      },
+      onError: setError,
+    });
+  }, [wakeWord, state, approval]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && interrupt();
@@ -190,5 +216,5 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     setMessages((data ?? []).map((m) => ({ id: m.id, role: m.role, content: m.content, executions: [], notices: [] })));
   };
 
-  return { messages, state, interim, error, approval, decide, send, listen, interrupt, busy, conversationId, newConversation, openConversation };
+  return { messages, state, interim, error, approval, decide, send, listen, interrupt, busy, conversationId, newConversation, openConversation, wakeWord };
 }

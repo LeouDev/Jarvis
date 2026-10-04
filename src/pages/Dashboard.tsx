@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { Activity, Brain, History, Link2, MessageSquare, Plus, Settings as SettingsIcon, Volume2, VolumeX, Wrench } from 'lucide-react';
+import { Activity, Brain, Ear, EarOff, History, Link2, MessageSquare, Plus, Settings as SettingsIcon, Volume2, VolumeX, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityLog } from '../components/jarvis/ActivityLog';
 import { ApprovalDialog } from '../components/jarvis/ApprovalDialog';
@@ -67,9 +67,10 @@ export default function Dashboard({ session }: { session: Session }) {
   const j = useJarvis(settings, bump);
   const name = displayName || session.user.email?.split('@')[0] || '';
   const hasMessages = j.messages.length > 0;
-  const stateLabel = j.approval ? 'Awaiting approval' : STATE_LABEL[j.state];
+  const stateLabel = j.approval ? 'Awaiting approval' : j.state === 'idle' && j.wakeWord ? 'Say “Jarvis”' : STATE_LABEL[j.state];
 
   const onOrb = () => (j.state === 'speaking' ? j.interrupt() : j.listen());
+  const toggleWake = () => update((s) => ({ ...s, voice: { ...s.voice, wakeWord: !s.voice.wakeWord } }));
   const toggleSpeech = () => {
     if (settings.voice.speak) j.interrupt();
     update((s) => ({ ...s, voice: { ...s.voice, speak: !s.voice.speak } }));
@@ -118,6 +119,16 @@ export default function Dashboard({ session }: { session: Session }) {
                   </div>
                 )}
                 <div className="ml-auto flex items-center gap-1">
+                  {voice.supportsInput && (
+                    <button
+                      onClick={toggleWake}
+                      title={settings.voice.wakeWord ? 'Stop listening for “Jarvis”' : 'Listen for “Jarvis” (hands-free)'}
+                      aria-pressed={settings.voice.wakeWord}
+                      className={`rounded-lg p-2 hover:bg-white/5 ${settings.voice.wakeWord ? 'text-glow' : 'text-dim hover:text-white'}`}
+                    >
+                      {settings.voice.wakeWord ? <Ear className="size-4" /> : <EarOff className="size-4" />}
+                    </button>
+                  )}
                   <button onClick={toggleSpeech} title={settings.voice.speak ? 'Mute voice' : 'Unmute voice'} className="rounded-lg p-2 text-dim hover:bg-white/5 hover:text-white">
                     {settings.voice.speak ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
                   </button>

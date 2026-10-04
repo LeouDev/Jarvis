@@ -51,6 +51,14 @@ npm run agent                 # second terminal: Mac agent on http://localhost:3
    - "Run a safe command to show my current directory." An approval dialog appears, the command runs, and the result shows in **Activity**.
    - "Create a Facebook post for my 13C project." A **Post preview** appears, and nothing is published unless you click **Publish**.
 
+## Voice
+
+- **Push to talk:** click **Speak** or the orb. Press `Esc` or click the orb while JARVIS is talking to interrupt it.
+- **Follow-up** (on by default): after answering something you *said*, JARVIS keeps listening for a few seconds, so a conversation flows without clicking.
+- **Wake word** (off by default): click the ear icon or go to **Settings → Voice**, then say "Jarvis…" while the tab is open, e.g. "Jarvis, open VS Code". If you only say "Jarvis", you hear a chime and it waits for the command.
+  - This uses the browser's built-in speech recognition (Chrome, Safari), so the microphone stays on, and in Chrome the audio is processed by Google's speech service.
+  - The Claude desktop app's browser pane blocks microphones, so use a regular browser.
+
 ## Architecture
 
 | Path | What it does |

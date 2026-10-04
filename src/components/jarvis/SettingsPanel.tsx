@@ -79,6 +79,18 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
 
       <Section title="Voice">
         <Toggle label="Speak responses" hint="Uses your browser's built-in voice" checked={settings.voice.speak} onChange={(speak) => update((s) => ({ ...s, voice: { ...s.voice, speak } }))} />
+        <Toggle
+          label="Keep listening after I reply"
+          hint="After answering something you said, JARVIS listens for a follow-up. Stays quiet if you don't speak."
+          checked={settings.voice.followUp}
+          onChange={(followUp) => update((s) => ({ ...s, voice: { ...s.voice, followUp } }))}
+        />
+        <Toggle
+          label="Wake word: “Jarvis”"
+          hint="Hands-free while this tab is open, e.g. “Jarvis, open VS Code”. The browser keeps the microphone on and its speech service (Google in Chrome) processes audio continuously."
+          checked={settings.voice.wakeWord}
+          onChange={(wakeWord) => update((s) => ({ ...s, voice: { ...s.voice, wakeWord } }))}
+        />
         <div className="flex flex-wrap items-center gap-3">
           <select className={`${select} min-w-0 flex-1`} value={settings.voice.voiceName} onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, voiceName: e.target.value } }))} aria-label="Voice">
             <option value="">System default voice</option>

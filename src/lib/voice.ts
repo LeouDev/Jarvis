@@ -6,6 +6,8 @@ export interface VoiceProvider {
   readonly supportsOutput: boolean;
   listen(opts: { onInterim?: (text: string) => void; lang?: string }): Promise<string>;
   stopListening(): void;
+  /** Listens continuously for the wake word; calls onWake with whatever followed it. Returns a stop function. */
+  listenForWakeWord(opts: { onWake: (command: string) => void; onError?: (message: string) => void }): () => void;
   speak(text: string, opts?: { voiceName?: string; rate?: number }): Promise<void>;
   stopSpeaking(): void;
   voices(): string[];
@@ -19,6 +21,37 @@ type Recognition = {
 
 const RecognitionCtor: (new () => Recognition) | undefined =
   typeof window !== 'undefined' ? (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition : undefined;
+
+// "Jarvis" plus the ways recognizers commonly mishear it; captures what follows ("Jarvis, open VS Code").
+export const WAKE = /\b(jarvis|jarvas|javis|jervis)\b[\s,.!?]*(.*)$/i;
+
+const RECOGNITION_ERRORS: Record<string, string> = {
+  'not-allowed': 'Microphone access was denied. Allow it for this site in your browser settings.',
+  'audio-capture': 'No microphone was found.',
+  'service-not-allowed': 'Speech recognition is blocked in this browser. Try Chrome or Safari.',
+  network: "Speech recognition couldn't reach its service. Check your connection.",
+};
+
+/** Short rising tone confirming the wake word was heard. */
+export function chime() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const t = ctx.currentTime;
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.exponentialRampToValueAtTime(1320, t + 0.12);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.3);
+    osc.onended = () => ctx.close();
+  } catch {
+    /* audio unavailable: the orb still shows LISTENING */
+  }
+}
 
 /** Turns markdown-ish replies into something pleasant to hear. */
 export const speakable = (text: string) =>
@@ -57,13 +90,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
       };
       r.onerror = (e) => {
         if (e.error === 'no-speech' || e.error === 'aborted') return;
-        const reasons: Record<string, string> = {
-          'not-allowed': 'Microphone access was denied. Allow it for this site in your browser settings.',
-          'audio-capture': 'No microphone was found.',
-          'service-not-allowed': 'Speech recognition is blocked in this browser. Try Chrome or Safari.',
-          network: "Speech recognition couldn't reach its service. Check your connection.",
-        };
-        reject(new Error(reasons[e.error] ?? `Voice input failed (${e.error}).`));
+        reject(new Error(RECOGNITION_ERRORS[e.error] ?? `Voice input failed (${e.error}).`));
       };
       r.onend = () => {
         this.recognition = null;
@@ -75,6 +102,59 @@ export class BrowserVoiceProvider implements VoiceProvider {
 
   stopListening() {
     this.recognition?.stop();
+  }
+
+  listenForWakeWord({ onWake, onError }: { onWake: (command: string) => void; onError?: (message: string) => void }) {
+    if (!RecognitionCtor) {
+      onError?.('Wake word needs speech recognition (Chrome or Safari).');
+      return () => {};
+    }
+    let stopped = false;
+    let heard: string | null = null;
+    let quickEnds = 0;
+    let current: Recognition | null = null;
+
+    const start = () => {
+      const r = new RecognitionCtor();
+      current = r;
+      const startedAt = Date.now();
+      r.lang = navigator.language || 'en-US';
+      r.continuous = true;
+      r.interimResults = false;
+      r.onresult = (e) => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const m = e.results[i].isFinal && e.results[i][0].transcript.match(WAKE);
+          if (m && heard === null) {
+            heard = m[2].trim();
+            r.stop(); // hand the mic over only once this session has fully ended (see onend)
+          }
+        }
+      };
+      r.onerror = (e) => {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture') {
+          stopped = true;
+          onError?.(RECOGNITION_ERRORS[e.error]);
+        }
+      };
+      r.onend = () => {
+        if (heard !== null) return onWake(heard);
+        if (stopped) return;
+        // Browsers end long sessions on their own; restart, backing off if it keeps dying immediately.
+        quickEnds = Date.now() - startedAt < 2000 ? quickEnds + 1 : 0;
+        setTimeout(() => !stopped && start(), quickEnds > 3 ? 3000 : 150);
+      };
+      try {
+        r.start();
+      } catch {
+        setTimeout(() => !stopped && start(), 500);
+      }
+    };
+    start();
+    return () => {
+      stopped = true;
+      heard = null;
+      current?.abort();
+    };
   }
 
   voices() {
