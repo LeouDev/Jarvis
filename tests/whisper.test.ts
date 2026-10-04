@@ -60,6 +60,7 @@ describe('Whisper transcription', () => {
     expect(extractTerms(['Remember that Dicta is my social quote app'])).toEqual(['Dicta']);
     expect(looksLikeBleed('14C.online. VS Code', 'Jarvis, VS Code, 14C.online')).toBe(true);
     expect(looksLikeBleed('Open VS Code', 'Jarvis, VS Code')).toBe(false);
+    expect(looksLikeBleed('3c.online, Dicta', 'Jarvis, 13c.online, Dicta')).toBe(true); // partial copies too
     expect(isLooping('60 days free. 60 days. 60 days. 60 days.')).toBe(true);
     expect(isLooping('Open VS Code. Then open Safari.')).toBe(false);
 

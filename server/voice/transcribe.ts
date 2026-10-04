@@ -33,11 +33,11 @@ async function whisper(audio: Blob, prompt: string, language?: string): Promise<
 
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+(?:[./][a-z0-9]+)*/g) ?? [];
 
-/** Whisper copying its hint instead of transcribing: every word comes from the vocabulary prompt. */
+/** Whisper copying its hint instead of transcribing: every word is (part of) the vocabulary prompt. */
 export const looksLikeBleed = (text: string, prompt: string) => {
   const heard = words(text);
-  const hint = new Set(words(prompt));
-  return heard.length > 0 && heard.every((w) => hint.has(w));
+  const hint = prompt.toLowerCase();
+  return heard.length > 0 && heard.every((w) => hint.includes(w));
 };
 
 /** Whisper stuck in a loop ("60 days. 60 days. 60 days."). */
