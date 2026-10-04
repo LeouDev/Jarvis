@@ -33,8 +33,14 @@ function MacAgent({ health, onChange }: { health: AgentHealth | 'checking'; onCh
     if (health === 'online') agentRequest('/config').then((c) => c.ok && setCfg(c)).catch(() => setCfg(null));
   }, [health]);
 
+  const [urlError, setUrlError] = useState('');
+
   const save = (e: FormEvent) => {
     e.preventDefault();
+    // The agent only listens on this Mac's loopback address, never on the website's domain.
+    if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(url.trim()))
+      return setUrlError('This is the address of the agent on your Mac, usually http://localhost:3847, not the website address.');
+    setUrlError('');
     agentSettings.save(url, token);
     onChange();
   };
@@ -45,11 +51,18 @@ function MacAgent({ health, onChange }: { health: AgentHealth | 'checking'; onCh
       <p className="mb-3 text-sm text-dim">
         Run <code className="font-mono text-glow">npm run agent</code> on your Mac and paste the token it prints. The token stays in this browser.
       </p>
-      <form onSubmit={save} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-        <input className={field} value={url} onChange={(e) => setUrl(e.target.value)} aria-label="Agent URL" />
-        <input className={field} type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Agent token" aria-label="Agent token" />
+      <form onSubmit={save} className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
+        <label className="space-y-1">
+          <span className="hud-label">Agent address</span>
+          <input className={field} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:3847" />
+        </label>
+        <label className="space-y-1">
+          <span className="hud-label">Agent token</span>
+          <input className={field} type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Printed by npm run agent" />
+        </label>
         <button className="rounded-lg bg-arc px-4 py-2 text-sm font-medium text-white hover:bg-arc/85">Save & test</button>
       </form>
+      {urlError && <p className="mt-2 text-sm text-danger">{urlError}</p>}
       {cfg && (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
