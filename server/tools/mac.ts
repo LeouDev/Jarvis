@@ -44,7 +44,7 @@ export const readFile: JarvisTool<{ path: string }> = {
 export const searchFiles: JarvisTool<{ query: string; directory?: string }> = {
   untrustedOutput: true,
   name: 'searchFiles', group: 'mac', permission: 'read', runOn: 'agent',
-  description: 'Find files or folders by name inside the allowed directories (Spotlight).',
+  description: 'Find files or folders on the Mac by name (documents, PDFs, project folders), inside the allowed directories. Use for "find my …" / "where is my …".',
   schema: z.object({ query: z.string().min(1).max(200), directory: z.string().max(1000).optional() }),
   summary: (i) => `Searched files for "${i.query}"`,
 };

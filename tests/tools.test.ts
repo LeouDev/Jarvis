@@ -31,6 +31,7 @@ describe('tool registry', () => {
     expect(names('Remind me at 5 to call Mark')).toEqual(expect.arrayContaining(['createReminder', 'createTask']));
     expect(names("What's on my screen?")).toContain('lookAtScreen');
     expect(names('Turn the volume down')).toContain('setVolume');
+    expect(names('Find my resume PDF.')).toContain('searchFiles');
   });
 
   it('screenshots always need approval; app skills run on the Mac agent', () => {

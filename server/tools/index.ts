@@ -23,7 +23,7 @@ const INTENTS: [JarvisTool['group'], RegExp][] = [
   ['time', /\b(time|date|day|today|tonight|tomorrow|yesterday|week|month|clock|schedule)\b/i],
   ['web', /\b(search|look up|lookup|google|news|latest|current|weather|who is|what is|price|web|online|find out)\b/i],
   ['tasks', /\b(tasks?|to-?dos?|remind|reminders?)\b/i],
-  ['mac', /\b(open|launch|start|run|command|terminal|shell|directory|folder|files?|read|create|write|save|cpu|memory usage|system|status|mac|computer|apps?|website|url|disk|code|editor|finder)\b/i],
+  ['mac', /\b(open|launch|start|run|command|terminal|shell|directory|folder|files?|read|create|write|save|cpu|memory usage|system|status|mac|computer|apps?|website|url|disk|code|editor|finder|find|locate|where|pdf|docs?|documents?|downloads?|desktop)\b/i],
   ['macApps', /\b(music|songs?|spotify|play|playing|pause|resume|skip|next|previous|track|volume|mute|unmute|louder|quieter|softer|remind|reminders?|notes?|calendar|event|meeting|appointment|schedule|screen|screenshot|see|look|clipboard|copy|paste)\b/i],
   ['github', /\b(github|repo|repos|repository|repositories|commits?|pull requests?|prs?|issues?|branch(es)?)\b/i],
   ['social', /\b(post|posts|facebook|instagram|tweet|linkedin|tiktok|publish|caption|social)\b/i],

@@ -48,7 +48,7 @@ export const socialGetAccount: JarvisTool<{ platform: string }> = {
 export const socialPublish: JarvisTool<{ platform: string; caption: string }> = {
   name: 'social_publish', group: 'social', permission: 'dangerous', runOn: 'server',
   description:
-    'Prepare a social media post. The user sees a POST PREVIEW with Publish / Cancel; it is published ONLY if they click Publish. Use this whenever the user asks to create, draft or post something.',
+    'Prepare a social media post. The user sees a POST PREVIEW with Publish / Cancel; it is published ONLY if they click Publish. Use only when the user clearly asks to create, draft, write or post a social media post — never infer it from vague or garbled phrases; ask instead.',
   schema: z.object({ platform: z.enum(PLATFORMS), caption: z.string().min(1).max(5000) }),
   summary: (i) => `Publish ${label(i.platform)} post`,
   approval: () => ({ decision: 'approve' }), // never bypassed, regardless of settings

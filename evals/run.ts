@@ -42,10 +42,21 @@ const results: { ok: boolean; ms: number }[] = [];
 const failures: string[] = [];
 for (const c of CASES) {
   const tools = selectTools(c.say).map(toAITool);
-  const started = Date.now();
+  let started = Date.now();
   let verdict: string | null;
   try {
-    const res = await provider.chat([{ role: 'system', content: system }, { role: 'user', content: c.say }], tools);
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      started = Date.now(); // latency of the successful attempt only
+      try {
+        res = await provider.chat([{ role: 'system', content: system }, { role: 'user', content: c.say }], tools);
+        break;
+      } catch (e) {
+        // Free tiers limit tokens per minute; wait it out instead of scoring a rate limit as a wrong answer.
+        if (!/\(429\)/.test((e as Error).message) || attempt === 4) throw e;
+        await new Promise((r) => setTimeout(r, 20_000));
+      }
+    }
     const calls = res.toolCalls.map((t) => ({ name: t.function.name, args: JSON.parse(t.function.arguments || '{}') }));
     verdict = judge(c, calls);
   } catch (e) {

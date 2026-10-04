@@ -13,7 +13,7 @@ export const getCurrentTime: JarvisTool<{}> = {
 
 export const searchMemory: JarvisTool<{ query: string }> = {
   name: 'searchMemory', group: 'memory', permission: 'read', runOn: 'server',
-  description: "Search the user's saved memories (projects, preferences, personal facts).",
+  description: "Search facts the user asked you to remember (projects, preferences, personal facts). Not for files on the Mac — use searchFiles.",
   schema: z.object({ query: z.string().min(1).max(300) }),
   summary: (i) => `Searched memory for "${i.query}"`,
   async execute({ query }, { db }) {
