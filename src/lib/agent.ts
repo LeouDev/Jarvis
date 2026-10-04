@@ -39,6 +39,8 @@ export async function agentRequest<T = any>(path: string, body?: unknown): Promi
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
+  // An agent started before a skill was added answers its route with a plain-text 404.
+  if (res.status === 404) return { ok: false, error: 'Your Mac agent is out of date. Restart it with npm run agent.' } as T;
   return res.json();
 }
 
@@ -61,15 +63,23 @@ const ENDPOINTS: Record<string, string> = {
   createFile: '/file/write',
   searchFiles: '/file/search',
   systemStatus: '/system/status',
+  openProject: '/open-project',
+  mediaControl: '/media',
+  setVolume: '/volume',
+  createReminder: '/reminders',
+  createNote: '/notes',
+  createCalendarEvent: '/calendar',
+  lookAtScreen: '/screenshot',
+  clipboard: '/clipboard',
 };
 
 /** Executes an agent tool. `confirmed` tells the agent the user approved it in the dialog. */
-export async function runAgentTool(tool: string, input: Record<string, unknown>, confirmed: boolean) {
+export async function runAgentTool(tool: string, input: Record<string, unknown>, confirmed: boolean): Promise<{ ok: boolean; output: string; image?: string }> {
   const path = ENDPOINTS[tool];
   if (!path) return { ok: false, output: `The Mac agent doesn't support ${tool}.` };
   try {
-    const res = await agentRequest<{ ok: boolean; output?: string; error?: string }>(path, { ...input, confirmed });
-    return res.ok ? { ok: true, output: res.output ?? 'Done.' } : { ok: false, output: res.error ?? 'The Mac agent refused.' };
+    const res = await agentRequest<{ ok: boolean; output?: string; error?: string; image?: string }>(path, { ...input, confirmed });
+    return res.ok ? { ok: true, output: res.output ?? 'Done.', image: res.image } : { ok: false, output: res.error ?? 'The Mac agent refused.' };
   } catch {
     return { ok: false, output: AGENT_OFFLINE };
   }

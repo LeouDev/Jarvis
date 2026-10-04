@@ -1,0 +1,59 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { transcribe, vocabulary, whisperLanguage } from '../server/voice/transcribe';
+import { downsample, encodeWav } from '../src/lib/whisper';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env.GROQ_API_KEY;
+});
+
+describe('audio encoding', () => {
+  it('downsamples by averaging blocks', () => {
+    expect(Array.from(downsample(new Float32Array([1, 3, 5, 7, 9, 11]), 3))).toEqual([3, 9]);
+  });
+
+  it('writes a valid 16 kHz mono 16-bit WAV', async () => {
+    const wav = encodeWav(new Float32Array([0, 1, -1]));
+    const v = new DataView(await wav.arrayBuffer());
+    const tag = (o: number) => String.fromCharCode(...[0, 1, 2, 3].map((i) => v.getUint8(o + i)));
+    expect([tag(0), tag(8), tag(12), tag(36)]).toEqual(['RIFF', 'WAVE', 'fmt ', 'data']);
+    expect([v.getUint16(22, true), v.getUint32(24, true), v.getUint16(34, true), v.getUint32(40, true)]).toEqual([1, 16000, 16, 6]);
+    expect([v.getInt16(44, true), v.getInt16(46, true), v.getInt16(48, true)]).toEqual([0, 32767, -32767]);
+    expect(wav.type).toBe('audio/wav');
+  });
+});
+
+describe('Whisper transcription', () => {
+  const audio = new Blob([new Uint8Array(8000)], { type: 'audio/wav' });
+
+  it('sends model, vocabulary prompt and language to Groq', async () => {
+    process.env.GROQ_API_KEY = 'test';
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ text: ' Open 13C in VS Code. ' }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await transcribe(audio, { prompt: 'Jarvis, Leou. 13C', language: 'en' })).toBe('Open 13C in VS Code.');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
+    const form = init.body as FormData;
+    expect([form.get('model'), form.get('prompt'), form.get('language')]).toEqual(['whisper-large-v3-turbo', 'Jarvis, Leou. 13C', 'en']);
+  });
+
+  it('drops Whisper silence hallucinations and explains failures', async () => {
+    process.env.GROQ_API_KEY = 'test';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ text: 'Thank you.' })));
+    expect(await transcribe(audio)).toBe('');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('slow down', { status: 429 })));
+    await expect(transcribe(audio)).rejects.toThrow(/rate-limited/);
+    delete process.env.GROQ_API_KEY;
+    await expect(transcribe(audio)).rejects.toThrow(/GROQ_API_KEY/);
+  });
+
+  it('builds vocabulary from saved memories and maps languages', async () => {
+    const limit = vi.fn().mockResolvedValue({ data: [{ content: 'Leou is building 13C.' }, { content: 'Kassix is a POS app.' }] });
+    const db = { from: () => ({ select: () => ({ in: () => ({ order: () => ({ limit }) }) }) }) } as any;
+    const vocab = await vocabulary(db, 'Leou');
+    expect(vocab).toContain('Jarvis, Leou.');
+    expect(vocab).toContain('Kassix is a POS app.');
+    expect(vocab.length).toBeLessThanOrEqual(800);
+    expect([whisperLanguage('en-PH'), whisperLanguage(''), whisperLanguage('fil-PH')]).toEqual(['en', 'en', 'tl']);
+  });
+});

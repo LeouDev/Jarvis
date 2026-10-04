@@ -26,6 +26,18 @@ describe('tool registry', () => {
     expect(names('Create a Facebook post for my 13C project')).toContain('social_publish');
     expect(names('Run a safe command to show my current directory')).toContain('runTerminal');
     expect(names('What projects am I working on?')).not.toContain('runTerminal');
+    expect(names('Open Dicta in VS Code')).toEqual(expect.arrayContaining(['openProject', 'searchFiles']));
+    expect(names('Pause the music')).toContain('mediaControl');
+    expect(names('Remind me at 5 to call Mark')).toEqual(expect.arrayContaining(['createReminder', 'createTask']));
+    expect(names("What's on my screen?")).toContain('lookAtScreen');
+    expect(names('Turn the volume down')).toContain('setVolume');
+  });
+
+  it('screenshots always need approval; app skills run on the Mac agent', () => {
+    expect(planToolCall(call('lookAtScreen', { question: 'What is this error?' }), relaxed)).toMatchObject({ kind: 'pending', needsApproval: true });
+    expect(planToolCall(call('mediaControl', { action: 'pause' }), DEFAULT_SETTINGS)).toMatchObject({ kind: 'pending', needsApproval: false });
+    expect(planToolCall(call('createReminder', { title: 'Call Mark', due: '2026-10-05T17:00' }), DEFAULT_SETTINGS)).toMatchObject({ kind: 'pending' });
+    expect(planToolCall(call('setVolume', { level: 300 }), DEFAULT_SETTINGS).kind).toBe('invalid');
   });
 });
 

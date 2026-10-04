@@ -4,6 +4,7 @@ import { runAgentTool } from '../lib/agent';
 import { streamChat } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { chime, NoSpeechError, stripWake, voice } from '../lib/voice';
+import { whisperVoice } from '../lib/whisper';
 
 export type JarvisState = 'idle' | 'listening' | 'processing' | 'thinking' | 'speaking' | 'executing';
 
@@ -23,7 +24,7 @@ const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
  * The conversation state machine:
  * IDLE → LISTENING → PROCESSING → THINKING → (EXECUTING ↔ approval) → SPEAKING → IDLE
  */
-export function useJarvis(settings: Settings, onTurnComplete: () => void) {
+export function useJarvis(settings: Settings, onTurnComplete: () => void, whisperAvailable = false) {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [state, setState] = useState<JarvisState>('idle');
   const [interim, setInterim] = useState('');
@@ -34,6 +35,10 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
   const approvalResolver = useRef<((ok: boolean) => void) | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  // Speech input engine: Whisper when the server has a Groq key, else the browser's recognizer.
+  const stt = settings.voice.engine === 'whisper' && whisperAvailable ? whisperVoice : voice;
+  const sttRef = useRef(stt);
+  sttRef.current = stt;
   /** The current turn started by voice: reply → keep listening for a follow-up. */
   const voiceTurn = useRef(false);
 
@@ -146,7 +151,7 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
     setInterim('');
     setState('listening');
     try {
-      const heard = await voice.listen({ onInterim: setInterim, lang: settingsRef.current.voice.lang });
+      const heard = await sttRef.current.listen({ onInterim: setInterim, lang: settingsRef.current.voice.lang, onEnd: () => setState('processing') });
       setInterim('');
       const command = stripWake(heard); // "Jarvis, open VS Code" → "open VS Code"
       if (heard && !command) {
@@ -164,7 +169,7 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
   };
 
   const listen = async () => {
-    if (state === 'listening') return voice.stopListening();
+    if (state === 'listening') return stt.stopListening();
     if (busy) return;
     return capture(false);
   };
@@ -173,7 +178,7 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
   const interrupt = useCallback(() => {
     voiceTurn.current = false;
     voice.stopSpeaking();
-    voice.stopListening();
+    sttRef.current.stopListening();
     setState((s) => (s === 'speaking' || s === 'listening' ? 'idle' : s));
   }, []);
 
@@ -189,11 +194,11 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
   // Wake word: while idle, listen for "Jarvis…" and act on whatever follows it.
   const latest = useRef({ send, capture });
   latest.current = { send, capture };
-  const wakeWord = settings.voice.wakeWord && voice.supportsInput;
+  const wakeWord = settings.voice.wakeWord && voice.supportsInput; // spotting "Jarvis" always uses the browser recognizer
   const lang = settings.voice.lang;
   useEffect(() => {
     if (!wakeWord || state !== 'idle' || approval) return;
-    return voice.listenForWakeWord({
+    return stt.listenForWakeWord({
       lang,
       onArmed: chime,
       onHeard: showHeard,
@@ -203,7 +208,7 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void) {
       },
       onError: setError,
     });
-  }, [wakeWord, state, approval, lang, showHeard]);
+  }, [wakeWord, state, approval, lang, showHeard, stt]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && interrupt();

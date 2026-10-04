@@ -4,7 +4,8 @@
 export interface VoiceProvider {
   readonly supportsInput: boolean;
   readonly supportsOutput: boolean;
-  listen(opts: { onInterim?: (text: string) => void; lang?: string }): Promise<string>;
+  /** Records one utterance. onEnd fires when recording stops (before any server-side transcription). */
+  listen(opts: { onInterim?: (text: string) => void; lang?: string; onEnd?: () => void }): Promise<string>;
   stopListening(): void;
   /** Listens continuously for the wake word; calls onWake with whatever followed it. Returns a stop function. */
   listenForWakeWord(opts: WakeOptions): () => void;

@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import * as ai from '../ai/AIManager.js';
+import { describeImage } from '../ai/vision.js';
 import type { AIMessage, AIToolCall } from '../ai/AIProvider.js';
 import type { Env } from '../lib/auth.js';
 import { loadSettings, logActivity, truncate, UserFacingError } from '../lib/util.js';
@@ -18,7 +19,7 @@ const Body = z
     conversationId: z.uuid().optional(),
     message: z.string().trim().min(1).max(8000).optional(),
     resolutions: z
-      .array(z.object({ id: z.uuid(), approved: z.boolean(), result: z.object({ ok: z.boolean(), output: z.string().max(100_000) }).optional() }))
+      .array(z.object({ id: z.uuid(), approved: z.boolean(), result: z.object({ ok: z.boolean(), output: z.string().max(100_000), image: z.string().max(4_000_000).optional() }).optional() }))
       .max(20)
       .optional(),
     timezone: z.string().max(64).optional(),
@@ -203,6 +204,8 @@ async function applyResolutions(ctx: ToolContext, conversationId: string, resolu
     } else if (outcome === 'record') {
       status = r.result!.ok ? 'succeeded' : 'failed';
       output = r.result!.output;
+      if (ex.tool === 'lookAtScreen' && r.result!.image)
+        output = await describeImage(r.result!.image, String(ex.input.question ?? "What's on the screen?"));
     } else {
       const res = await runServerTool(tool, ex.input, ctx);
       status = res.ok ? 'succeeded' : 'failed';

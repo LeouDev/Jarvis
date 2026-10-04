@@ -107,6 +107,24 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
         </div>
         <label className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-white/90">
           <span className="min-w-40 flex-1">
+            Speech engine
+            <span className="block text-xs text-faint">
+              Whisper is far more accurate with accents and knows your project names from memory. {config?.stt ? '' : 'Needs GROQ_API_KEY on the server.'}
+            </span>
+          </span>
+          <select
+            className={`${select} w-full sm:w-56`}
+            value={config?.stt ? settings.voice.engine : 'browser'}
+            disabled={!config?.stt}
+            onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, engine: e.target.value as 'whisper' | 'browser' } }))}
+            aria-label="Speech engine"
+          >
+            <option value="whisper">Whisper (Groq)</option>
+            <option value="browser">Browser built-in</option>
+          </select>
+        </label>
+        <label className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-white/90">
+          <span className="min-w-40 flex-1">
             Speech recognition language
             <span className="block text-xs text-faint">Match your accent. English (Philippines) often hears Filipino-accented English better.</span>
           </span>

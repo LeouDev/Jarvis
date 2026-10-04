@@ -8,6 +8,7 @@ export interface ServerConfig {
   webSearch: string;
   github: { token: boolean; username: string | null };
   embeddings: boolean;
+  stt: boolean;
   encryption: boolean;
 }
 

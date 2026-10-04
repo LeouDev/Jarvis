@@ -51,7 +51,7 @@ export const deleteMemory: JarvisTool<{ id: string }> = {
 
 export const createTask: JarvisTool<{ title: string; notes?: string; due?: string }> = {
   name: 'createTask', group: 'tasks', permission: 'write', runOn: 'server',
-  description: 'Create a task / to-do for the user.',
+  description: "Add an item to JARVIS's own to-do list (no alerts). For 'remind me…' prefer createReminder, which alerts on the Mac.",
   schema: z.object({
     title: z.string().min(1).max(200),
     notes: z.string().max(2000).optional(),

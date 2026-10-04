@@ -54,3 +54,22 @@ describe('local agent security', () => {
     expect((await post('/open-url', { url: 'file:///etc/passwd' })).status).toBe(400);
   });
 });
+
+describe('local agent app skills (validation only — nothing is actually run)', () => {
+  it('opens only folders inside allowed directories, in allowed editors', async () => {
+    expect((await post('/open-project', { path: '/etc' })).status).toBe(403);
+    expect((await post('/open-project', { path: join(dir, 'notes.txt') })).status).toBe(400);
+    expect((await post('/open-project', { path: dir, app: 'Visual Studio Code' })).status).toBe(403); // not in this test allowlist
+    expect((await post('/open-project', { path: dir, app: 'Activity Monitor' })).status).toBe(400);
+  });
+
+  it('rejects malformed skill requests before touching the Mac', async () => {
+    expect((await post('/media', { action: 'shuffle-everything' })).status).toBe(400);
+    expect((await post('/media', { action: 'play', app: 'Winamp' })).status).toBe(400);
+    expect((await post('/volume', { level: 150 })).status).toBe(400);
+    expect((await post('/reminders', { title: 'Call Mark', due: 'next blue moon' })).status).toBe(400);
+    expect((await post('/calendar', { title: 'Standup' })).status).toBe(400);
+    expect((await post('/clipboard', { action: 'erase' })).status).toBe(400);
+    expect((await post('/screenshot', {}, {})).status).toBe(401);
+  });
+});

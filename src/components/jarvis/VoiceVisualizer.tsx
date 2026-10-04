@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { JarvisState } from '../../hooks/useJarvis';
+import { micLevel } from '../../lib/whisper';
 
 const PARAMS: Record<JarvisState, { amp: number; speed: number; flutter: number }> = {
   idle: { amp: 0.06, speed: 0.5, flutter: 0 },
@@ -29,7 +30,9 @@ export function VoiceVisualizer({ state, width = 320, height = 56 }: { state: Ja
 
     const draw = () => {
       const p = PARAMS[stateRef.current];
-      amp += (p.amp - amp) * 0.07;
+      // While recording with Whisper, follow the real microphone level so you can see it hearing you.
+      const target = stateRef.current === 'listening' && micLevel.value > 0 ? 0.08 + micLevel.value * 0.9 : p.amp;
+      amp += (target - amp) * 0.12;
       t += 0.016 * p.speed;
       const w = el.width, h = el.height;
       const level = amp * (1 + p.flutter * Math.sin(t * 5.3) * Math.sin(t * 2.1));

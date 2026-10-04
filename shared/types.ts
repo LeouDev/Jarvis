@@ -5,7 +5,8 @@ export interface Settings {
   /** Preferred AI provider id; empty = server default (AI_PROVIDER). */
   provider: string;
   /** followUp: keep listening briefly after a spoken reply. wakeWord: always listen for "Jarvis" while open. */
-  voice: { speak: boolean; voiceName: string; rate: number; followUp: boolean; wakeWord: boolean; lang: string };
+  /** engine: 'whisper' (server, more accurate, knows your project names) or 'browser' (Chrome/Safari built-in). */
+  voice: { speak: boolean; voiceName: string; rate: number; followUp: boolean; wakeWord: boolean; lang: string; engine: 'whisper' | 'browser' };
   memory: { autoRecall: boolean };
   /** Posting and sending messages always require approval; these two are user-adjustable. */
   approvals: { files: boolean; terminal: boolean };
@@ -14,7 +15,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   provider: '',
-  voice: { speak: true, voiceName: '', rate: 1, followUp: true, wakeWord: false, lang: '' }, // lang '' = browser language
+  voice: { speak: true, voiceName: '', rate: 1, followUp: true, wakeWord: false, lang: '', engine: 'whisper' }, // lang '' = browser language
   memory: { autoRecall: true },
   approvals: { files: true, terminal: true },
   social: { defaultPlatform: 'facebook' },
@@ -56,7 +57,8 @@ export interface ToolExecutionView {
 export interface ActionResolution {
   id: string;
   approved: boolean;
-  result?: { ok: boolean; output: string };
+  /** `image`: a screenshot (data URL) for lookAtScreen; the server turns it into text and never stores it. */
+  result?: { ok: boolean; output: string; image?: string };
 }
 
 export type ChatEvent =

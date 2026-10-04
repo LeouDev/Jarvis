@@ -167,6 +167,29 @@ The agent:
 
 To start the agent at login, run `npm run agent` from a Login Item, or wrap it in a `launchd` plist.
 
+### App skills and macOS permissions
+
+| Say | Skill | macOS permission (granted once, to the app running the agent, e.g. Terminal) |
+|---|---|---|
+| "Open Dicta in VS Code" | `openProject` (folder must be in allowed directories) | none |
+| "Pause the music", "What's playing?" | `mediaControl` (Spotify / Music) | Automation → Spotify / Music (prompt) |
+| "Volume to 30", "Mute" | `setVolume` | none |
+| "Remind me at 5 to call Mark" | `createReminder` | Automation + Reminders access (prompts) |
+| "Make a note…" | `createNote` | Automation → Notes (prompt) |
+| "Add a meeting tomorrow at 2" | `createCalendarEvent` | Automation + Calendar access (prompts) |
+| "What's on my screen?" | `lookAtScreen` (always asks first; analysed by Gemini, never stored) | **Screen Recording** → Terminal (System Settings, manual) |
+| "What's on my clipboard?" | `clipboard` (refuses secret-looking text) | none |
+
+All AppleScript is fixed in `local-agent/tools/mac-apps.ts`, and your words are passed only as arguments, so a spoken phrase can't inject commands. Tip: tell JARVIS where projects live ("Remember that Dicta is in /Volumes/Mac Storage/Development/dicta") so "open Dicta" works instantly.
+
+### Speech recognition
+
+**Settings → Voice → Speech engine.**
+- **Whisper (default):** records in the browser, detects when you stop talking, and transcribes on the server with Groq's free `whisper-large-v3-turbo`. Your saved memories are sent along as a vocabulary hint, so names like "13C" or "Kassix" are spelled right. Needs `GROQ_API_KEY`.
+- **Browser built-in:** Chrome or Safari recognition, which streams interim text.
+
+The wake word is always spotted by the browser recognizer. In Whisper mode, the command after it is then re-transcribed from the recorded audio.
+
 ## Security model
 
 - **Keys:** AI, GitHub, and encryption keys exist only on the server. The browser bundle gets `SUPABASE_URL` and the anon key, nothing else.

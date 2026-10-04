@@ -64,7 +64,7 @@ export default function Dashboard({ session }: { session: Session }) {
   const bump = useCallback(() => setVersion((v) => v + 1), []);
   const { settings, update, config, displayName, saveDisplayName } = useSettings(session.user.id);
   const agent = useAgent();
-  const j = useJarvis(settings, bump);
+  const j = useJarvis(settings, bump, Boolean(config?.stt));
   const name = displayName || session.user.email?.split('@')[0] || '';
   const hasMessages = j.messages.length > 0;
   const stateLabel = j.approval ? 'Awaiting approval' : j.state === 'idle' && j.wakeWord ? 'Say “Jarvis”' : STATE_LABEL[j.state];
@@ -170,7 +170,7 @@ export default function Dashboard({ session }: { session: Session }) {
                       <VoiceVisualizer state={j.state} width={220} height={28} />
                     </div>
                   )}
-                  <CommandInput state={j.state} interim={j.interim} busy={j.busy} voiceSupported={voice.supportsInput} onSend={j.send} onListen={j.listen} />
+                  <CommandInput state={j.state} interim={j.interim} busy={j.busy} voiceSupported={voice.supportsInput || (settings.voice.engine === 'whisper' && Boolean(config?.stt))} onSend={j.send} onListen={j.listen} />
                   {j.error && <p className="text-center text-xs text-danger">{j.error}</p>}
                   {j.wakeWord && j.state === 'idle' && j.heard && <p className="truncate text-center text-xs text-faint">Heard: “{j.heard}”</p>}
                 </div>

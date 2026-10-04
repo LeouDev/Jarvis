@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { AgentConfig } from './config/index.js';
 import { AgentError, LOCAL_HOST, tokenMatches } from './security/index.js';
 import * as tools from './tools/index.js';
+import * as apps from './tools/mac-apps.js';
 
 async function body<T>(c: Context, schema: z.ZodType<T>): Promise<T> {
   const r = schema.safeParse(await c.req.json().catch(() => null));
@@ -91,6 +92,45 @@ export function createAgentApp(cfg: AgentConfig) {
   });
 
   app.post('/system/status', async (c) => c.json({ ok: true, ...(await tools.systemStatus()) }));
+
+  const when = z.string().min(8).max(40);
+
+  app.post('/open-project', async (c) => {
+    const i = await body(c, z.object({ path: z.string().min(1).max(1000), app: z.enum(apps.EDITORS).optional() }));
+    return c.json({ ok: true, output: await apps.openProject(i.path, i.app, cfg) });
+  });
+
+  app.post('/media', async (c) => {
+    const i = await body(c, z.object({ action: z.enum(apps.MEDIA_ACTIONS), app: z.enum(apps.PLAYERS).optional() }));
+    return c.json({ ok: true, output: await apps.media(i.action, i.app) });
+  });
+
+  app.post('/volume', async (c) => {
+    const i = await body(c, z.object({ level: z.number().int().min(0).max(100).optional(), mute: z.boolean().optional() }));
+    return c.json({ ok: true, output: await apps.volume(i.level, i.mute) });
+  });
+
+  app.post('/reminders', async (c) => {
+    const i = await body(c, z.object({ title: z.string().min(1).max(300), due: when.optional() }));
+    return c.json({ ok: true, output: await apps.reminder(i.title, i.due) });
+  });
+
+  app.post('/notes', async (c) => {
+    const i = await body(c, z.object({ title: z.string().min(1).max(200), body: z.string().max(20_000).default('') }));
+    return c.json({ ok: true, output: await apps.note(i.title, i.body) });
+  });
+
+  app.post('/calendar', async (c) => {
+    const i = await body(c, z.object({ title: z.string().min(1).max(300), start: when, durationMinutes: z.number().int().min(5).max(1440).optional() }));
+    return c.json({ ok: true, output: await apps.calendarEvent(i.title, i.start, i.durationMinutes) });
+  });
+
+  app.post('/screenshot', async (c) => c.json({ ok: true, output: 'Captured the main display.', image: await apps.screenshot() }));
+
+  app.post('/clipboard', async (c) => {
+    const i = await body(c, z.object({ action: z.enum(['read', 'write']), text: z.string().max(100_000).optional() }));
+    return c.json({ ok: true, output: await apps.clipboard(i.action, i.text) });
+  });
 
   return app;
 }
