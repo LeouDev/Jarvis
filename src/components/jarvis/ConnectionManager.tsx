@@ -54,11 +54,11 @@ function MacAgent({ health, onChange }: { health: AgentHealth | 'checking'; onCh
       <form onSubmit={save} className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
         <label className="space-y-1">
           <span className="hud-label">Agent address</span>
-          <input className={field} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:3847" />
+          <input className={field} name="agent-url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:3847" />
         </label>
         <label className="space-y-1">
           <span className="hud-label">Agent token</span>
-          <input className={field} type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Printed by npm run agent" />
+          <input className={field} name="agent-token" autoComplete="new-password" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Printed by npm run agent" />
         </label>
         <button className="rounded-lg bg-arc px-4 py-2 text-sm font-medium text-white hover:bg-arc/85">Save & test</button>
       </form>
@@ -131,8 +131,8 @@ function FacebookConnection({ encryption }: { encryption: boolean }) {
           </p>
           {!encryption && <p className="text-xs text-warn">The server has no TOKEN_ENCRYPTION_KEY yet, so connecting is disabled.</p>}
           <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
-            <input className={field} value={pageId} onChange={(e) => setPageId(e.target.value)} placeholder="Page ID" inputMode="numeric" aria-label="Facebook Page ID" />
-            <input className={field} type="password" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="Page access token" aria-label="Page access token" />
+            <input className={field} name="fb-page-id" autoComplete="off" value={pageId} onChange={(e) => setPageId(e.target.value.replace(/\D/g, ''))} placeholder="Page ID (numbers)" inputMode="numeric" aria-label="Facebook Page ID" />
+            <input className={field} name="fb-page-token" autoComplete="new-password" type="password" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="Page access token" aria-label="Page access token" />
             <button disabled={busy || !encryption || !pageId || !accessToken} className="flex items-center justify-center gap-2 rounded-lg bg-arc px-4 py-2 text-sm font-medium text-white hover:bg-arc/85 disabled:opacity-40">
               {busy && <Loader2 className="size-3.5 animate-spin" />}Connect
             </button>
