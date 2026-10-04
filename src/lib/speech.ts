@@ -58,11 +58,11 @@ export function sentenceChunker(emit: (chunk: string) => void, max = MAX_CHARS) 
   };
 }
 
-/** Set when the server says natural voice is unavailable (e.g. terms not accepted); shown in Settings. */
-export const naturalVoiceStatus = { error: '' };
+/** `error`: natural voice unavailable (e.g. terms not accepted; shown in Settings). `pausedUntil`: rate-limit cool-down. */
+export const naturalVoiceStatus = { error: '', pausedUntil: 0 };
 
 async function fetchSpeech(text: string, voiceName: string, signal: AbortSignal): Promise<Blob | null> {
-  if (naturalVoiceStatus.error) return null;
+  if (naturalVoiceStatus.error || Date.now() < naturalVoiceStatus.pausedUntil) return null;
   const { data } = await supabase.auth.getSession();
   const res = await fetch('/api/speak', {
     method: 'POST',
@@ -73,6 +73,8 @@ async function fetchSpeech(text: string, voiceName: string, signal: AbortSignal)
   if (res.ok) return res.blob();
   const { error } = await res.json().catch(() => ({ error: '' }));
   if (res.status === 409) naturalVoiceStatus.error = error; // stop asking until reload; Settings explains why
+  // Free tier ≈100 clips/day: once limited, use the browser voice for a while instead of failing every sentence.
+  if (res.status === 429) naturalVoiceStatus.pausedUntil = Date.now() + 10 * 60_000;
   return null;
 }
 

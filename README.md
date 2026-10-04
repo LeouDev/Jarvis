@@ -198,6 +198,8 @@ All AppleScript is fixed in `local-agent/tools/mac-apps.ts`, and your words are 
 
 Either way, JARVIS speaks each sentence as soon as it's complete while the rest of the answer is still streaming. With the natural voice, the next sentence's audio is fetched while the current one plays.
 
+Voices: `autumn`, `diana`, `hannah`, `austin`, `daniel`, `troy`. Groq's free tier allows about 100 clips a day (a reply uses 1–3). When it's rate-limited, JARVIS pauses the natural voice for 10 minutes and uses the browser voice in the meantime.
+
 ### Speech recognition
 
 **Settings → Voice → Speech engine.**
