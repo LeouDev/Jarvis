@@ -36,9 +36,14 @@ export const FacebookProvider: SocialProvider = {
     if (text.length > 63_206) throw new UserFacingError('Facebook posts are limited to 63,206 characters.');
     return { platform: 'facebook', caption: text };
   },
+  /** A Page token's /me is the Page itself; users and apps have no `category`. */
   async getAccount(token, pageId) {
-    const page = await graph(`/${pageId}?fields=id,name&access_token=${encodeURIComponent(token)}`);
-    return { platform: 'facebook', id: page.id, name: page.name };
+    const me = await graph(`/me?fields=id,name,category&access_token=${encodeURIComponent(token)}`);
+    if (!me.category)
+      throw new UserFacingError('That is a user token, not a Page token. Use the access_token next to your Page in the me/accounts result.');
+    if (me.id !== pageId)
+      throw new UserFacingError(`That token belongs to the Page "${me.name}" (ID ${me.id}), not ID ${pageId}. Use the Page's own id from me/accounts.`);
+    return { platform: 'facebook', id: me.id, name: me.name };
   },
   async publishPost(token, pageId, draft) {
     const body = new URLSearchParams({ message: draft.caption, access_token: token });
