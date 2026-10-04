@@ -49,9 +49,15 @@ describe('Whisper transcription', () => {
 
   it('builds a terms-only vocabulary from saved memories and maps languages', async () => {
     const limit = vi.fn().mockResolvedValue({ data: [{ content: "Kassix POS: 60 days free, then 149 pesos a month." }, { content: "13C's website is 13c.online. AIR/Rally too." }] });
-    const db = { from: () => ({ select: () => ({ in: () => ({ order: () => ({ limit }) }) }) }) } as any;
+    const projects = [{ name: 'Dicta', aliases: ['dikta'], website: 'https://dicta.app/' }];
+    const db = {
+      from: (table: string) =>
+        table === 'projects'
+          ? { select: () => ({ order: () => ({ limit: async () => ({ data: projects, error: null }) }) }) }
+          : { select: () => ({ in: () => ({ order: () => ({ limit }) }) }) },
+    } as any;
     const vocab = await vocabulary(db, 'Leou');
-    expect(vocab).toBe('Jarvis, VS Code, GitHub, Facebook, Spotify, Vercel, Supabase, Leou, Kassix, POS, 13C, 13c.online, AIR/Rally');
+    expect(vocab).toBe('Jarvis, VS Code, GitHub, Facebook, Spotify, Vercel, Supabase, Leou, Dicta, dikta, dicta.app, Kassix, POS, 13C, 13c.online, AIR/Rally');
     expect(vocab).not.toMatch(/days|pesos|60|149/); // no sentences or numbers for Whisper to copy
     expect([whisperLanguage('en-PH'), whisperLanguage(''), whisperLanguage('fil-PH')]).toEqual(['en', 'en', 'tl']);
   });

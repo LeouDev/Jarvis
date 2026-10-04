@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { UserFacingError } from '../lib/util.js';
+import { listProjects } from '../memory/projects.js';
 
 // Speech-to-text via Whisper on Groq (free tier). Any OpenAI-compatible /audio/transcriptions
 // endpoint works the same way, so swapping providers is a URL + key change.
@@ -76,14 +77,13 @@ export function extractTerms(texts: string[]): string[] {
  * sentences get copied into the transcript when the audio is unclear.
  */
 export async function vocabulary(db: SupabaseClient, name: string): Promise<string> {
-  const { data } = await db
-    .from('memories')
-    .select('content')
-    .in('category', ['projects', 'work', 'personal', 'technical'])
-    .order('importance', { ascending: false })
-    .limit(40);
+  const [{ data }, projects] = await Promise.all([
+    db.from('memories').select('content').in('category', ['projects', 'work', 'personal', 'technical']).order('importance', { ascending: false }).limit(40),
+    listProjects(db),
+  ]);
+  const projectTerms = projects.flatMap((p) => [p.name, ...p.aliases, ...(p.website ? [p.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')] : [])]);
   const terms = new Map<string, string>();
-  for (const t of [...BASE_TERMS, ...(name ? [name] : []), ...extractTerms((data ?? []).map((m: { content: string }) => m.content))])
+  for (const t of [...BASE_TERMS, ...(name ? [name] : []), ...projectTerms, ...extractTerms((data ?? []).map((m: { content: string }) => m.content))])
     terms.set(t.toLowerCase(), t);
   return [...terms.values()].join(', ').slice(0, 600);
 }

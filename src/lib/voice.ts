@@ -9,7 +9,8 @@ export interface VoiceProvider {
   stopListening(): void;
   /** Listens continuously for the wake word; calls onWake with whatever followed it. Returns a stop function. */
   listenForWakeWord(opts: WakeOptions): () => void;
-  speak(text: string, opts?: { voiceName?: string; rate?: number }): Promise<void>;
+  /** append: queue after what's already playing instead of interrupting it. */
+  speak(text: string, opts?: { voiceName?: string; rate?: number; append?: boolean }): Promise<void>;
   stopSpeaking(): void;
   voices(): string[];
 }
@@ -240,10 +241,10 @@ export class BrowserVoiceProvider implements VoiceProvider {
   }
 
   /** Speaks sentence by sentence (Chrome cuts off long utterances). Resolves when finished or interrupted. */
-  async speak(text: string, { voiceName, rate = 1 }: { voiceName?: string; rate?: number } = {}) {
+  async speak(text: string, { voiceName, rate = 1, append = false }: { voiceName?: string; rate?: number; append?: boolean } = {}) {
     if (!this.supportsOutput) return;
-    this.stopSpeaking();
-    const token = ++this.speakToken;
+    if (!append) this.stopSpeaking();
+    const token = this.speakToken;
     const voice = speechSynthesis.getVoices().find((v) => v.name === voiceName);
     const sentences = speakable(text).match(/[^.!?]+[.!?]*/g) ?? [];
     for (const sentence of sentences) {

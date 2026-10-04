@@ -47,6 +47,7 @@ export const socialGetAccount: JarvisTool<{ platform: string }> = {
 
 export const socialPublish: JarvisTool<{ platform: string; caption: string }> = {
   name: 'social_publish', group: 'social', permission: 'dangerous', runOn: 'server',
+  requiresIntent: /\b(post|posts|publish|draft|write|caption|share|announce|promote|tweet|create)\b/i,
   description:
     'Prepare a social media post. The user sees a POST PREVIEW with Publish / Cancel; it is published ONLY if they click Publish. Use only when the user clearly asks to create, draft, write or post a social media post — never infer it from vague or garbled phrases; ask instead.',
   schema: z.object({ platform: z.enum(PLATFORMS), caption: z.string().min(1).max(5000) }),

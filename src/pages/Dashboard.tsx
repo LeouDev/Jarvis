@@ -8,6 +8,7 @@ import { ConnectionManager } from '../components/jarvis/ConnectionManager';
 import { ConversationPanel } from '../components/jarvis/ConversationPanel';
 import { JarvisOrb } from '../components/jarvis/JarvisOrb';
 import { MemoryPanel } from '../components/jarvis/MemoryPanel';
+import { ProjectsPanel } from '../components/jarvis/ProjectsPanel';
 import { SettingsPanel } from '../components/jarvis/SettingsPanel';
 import { SystemStatus } from '../components/jarvis/SystemStatus';
 import { ToolsPanel } from '../components/jarvis/ToolsPanel';
@@ -64,7 +65,7 @@ export default function Dashboard({ session }: { session: Session }) {
   const bump = useCallback(() => setVersion((v) => v + 1), []);
   const { settings, update, config, displayName, saveDisplayName } = useSettings(session.user.id);
   const agent = useAgent();
-  const j = useJarvis(settings, bump, Boolean(config?.stt));
+  const j = useJarvis(settings, bump, Boolean(config?.stt), Boolean(config?.tts));
   const name = displayName || session.user.email?.split('@')[0] || '';
   const hasMessages = j.messages.length > 0;
   const stateLabel = j.approval ? 'Awaiting approval' : j.state === 'idle' && j.wakeWord ? 'Say “Jarvis”' : STATE_LABEL[j.state];
@@ -77,7 +78,7 @@ export default function Dashboard({ session }: { session: Session }) {
   };
 
   const panels: Record<Exclude<Section, 'conversation'>, [string, ReactNode]> = {
-    memory: ['Memory', <MemoryPanel version={version} />],
+    memory: ['Projects & memory', <div className="space-y-8"><ProjectsPanel version={version} /><div><h2 className="hud-label mb-3">Memories</h2><MemoryPanel version={version} /></div></div>],
     tools: ['Tools & tasks', <ToolsPanel version={version} />],
     accounts: ['Connected accounts', <ConnectionManager health={agent.health} config={config} onAgentChange={agent.refresh} />],
     activity: ['Activity', <div className="glass p-3"><ActivityLog version={version} /></div>],

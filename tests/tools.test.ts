@@ -21,7 +21,7 @@ describe('tool registry', () => {
 
   it('loads only relevant tools', () => {
     const names = (text: string) => selectTools(text).map((t) => t.name);
-    expect(names('Hello JARVIS')).toEqual(['searchMemory', 'saveMemory', 'deleteMemory']);
+    expect(names('Hello JARVIS')).toEqual(['searchMemory', 'saveMemory', 'deleteMemory', 'saveProject']);
     expect(names('Open VS Code')).toContain('openApplication');
     expect(names('Create a Facebook post for my 13C project')).toContain('social_publish');
     expect(names('Run a safe command to show my current directory')).toContain('runTerminal');
@@ -85,5 +85,13 @@ describe('prompt-injection guard', () => {
     expect(tainted('getCurrentTime', {}).kind).toBe('execute');
     expect(tainted('runTerminal', { command: 'rm -rf ~' }).kind).toBe('blocked');
     expect(planToolCall(call('saveMemory', { content: 'Dicta is my quote app' }), relaxed, false).kind).toBe('execute');
+  });
+});
+
+describe('intent guard', () => {
+  it('only drafts posts when the user actually asked for one', () => {
+    const post = call('social_publish', { platform: 'facebook', caption: 'Big news from 13C!' });
+    expect(planToolCall(post, DEFAULT_SETTINGS, false, 'cute about social media').kind).toBe('invalid');
+    expect(planToolCall(post, DEFAULT_SETTINGS, false, 'Create a Facebook post for 13C')).toMatchObject({ kind: 'pending', needsApproval: true });
   });
 });

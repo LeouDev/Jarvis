@@ -90,7 +90,7 @@ When the model calls tools:
 ## Supabase setup
 
 1. Create a project at https://supabase.com/dashboard (the free tier works).
-2. Apply the schema, using one of these:
+2. Apply the schema (the files in `supabase/migrations/`, in order), using one of these:
    ```bash
    supabase link --project-ref <your-ref>
    supabase db push
@@ -182,6 +182,21 @@ To start the agent at login, run `npm run agent` from a Login Item, or wrap it i
 | "What's on my clipboard?" | `clipboard` (refuses secret-looking text) | none |
 
 All AppleScript is fixed in `local-agent/tools/mac-apps.ts`, and your words are passed only as arguments, so a spoken phrase can't inject commands. Tip: tell JARVIS where projects live ("Remember that Dicta is in /Volumes/Mac Storage/Development/dicta") so "open Dicta" works instantly.
+
+### Projects
+
+**Projects & memory → Projects** stores each project's folder, website, GitHub repo, description and aliases. You can also just tell JARVIS: "13C's site is 13c.online and its repo is LeouDev/13c" (the `saveProject` tool).
+- Every request includes the project list, so "open 13C's site", "show Kassix commits" and "open Dicta in VS Code" go straight to the right place.
+- Project names, aliases and domains are also Whisper spelling hints.
+- Requires the `20261005020000_projects.sql` migration.
+
+### Voice output
+
+**Settings → Voice.**
+- **Natural (default):** Orpheus on Groq (`canopylabs/orpheus-v1-english`). Accept its terms once on your Groq account at https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english, or JARVIS keeps using the browser voice.
+- **Browser built-in:** the browser's own speech.
+
+Either way, JARVIS speaks each sentence as soon as it's complete while the rest of the answer is still streaming. With the natural voice, the next sentence's audio is fetched while the current one plays.
 
 ### Speech recognition
 

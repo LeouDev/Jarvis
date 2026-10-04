@@ -5,6 +5,7 @@ import type { ServerConfig } from '../../hooks/useSettings';
 import { supabase } from '../../lib/supabase';
 import { voice } from '../../lib/voice';
 import { MicTest } from './MicTest';
+import { createSpeaker, naturalVoiceStatus } from '../../lib/speech';
 import { ProviderSelector } from './ProviderSelector';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -48,6 +49,14 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
     return () => speechSynthesis.removeEventListener('voiceschanged', load);
   }, []);
 
+  const natural = settings.voice.output === 'natural' && Boolean(config?.tts);
+  const [voiceError, setVoiceError] = useState('');
+  const testVoice = () => {
+    const speaker = createSpeaker({ natural, naturalVoice: settings.voice.naturalVoice, browserVoice: settings.voice.voiceName, rate: settings.voice.rate });
+    speaker.enqueue('Good evening. All systems are operational.');
+    speaker.done().then(() => setVoiceError(naturalVoiceStatus.error));
+  };
+
   const clearActivity = async () => {
     if (!confirm('Delete your entire activity history? This cannot be undone.')) return;
     await supabase.from('activity_logs').delete().gte('created_at', '1970-01-01');
@@ -79,7 +88,7 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
       </Section>
 
       <Section title="Voice">
-        <Toggle label="Speak responses" hint="Uses your browser's built-in voice" checked={settings.voice.speak} onChange={(speak) => update((s) => ({ ...s, voice: { ...s.voice, speak } }))} />
+        <Toggle label="Speak responses" hint="JARVIS starts talking after the first sentence, while the rest is still being written" checked={settings.voice.speak} onChange={(speak) => update((s) => ({ ...s, voice: { ...s.voice, speak } }))} />
         <Toggle
           label="Keep listening after I reply"
           hint="After answering something you said, JARVIS listens for a follow-up. Stays quiet if you don't speak."
@@ -93,19 +102,45 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
           onChange={(wakeWord) => update((s) => ({ ...s, voice: { ...s.voice, wakeWord } }))}
         />
         <div className="flex flex-wrap items-center gap-3">
-          <select className={`${select} min-w-0 flex-1`} value={settings.voice.voiceName} onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, voiceName: e.target.value } }))} aria-label="Voice">
-            <option value="">System default voice</option>
-            {voices.map((v) => <option key={v}>{v}</option>)}
+          <select
+            className={select}
+            value={natural ? 'natural' : 'browser'}
+            disabled={!config?.tts}
+            onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, output: e.target.value as 'natural' | 'browser' } }))}
+            aria-label="Voice engine"
+          >
+            <option value="natural">Natural (Orpheus)</option>
+            <option value="browser">Browser built-in</option>
           </select>
+          {natural ? (
+            <>
+              <input
+                className={`${select} w-32`}
+                list="orpheus-voices"
+                defaultValue={settings.voice.naturalVoice}
+                onBlur={(e) => update((s) => ({ ...s, voice: { ...s.voice, naturalVoice: e.target.value.trim().toLowerCase() || 'troy' } }))}
+                aria-label="Natural voice name"
+              />
+              <datalist id="orpheus-voices">
+                {['troy', 'hannah', 'austin', 'autumn', 'diana', 'daniel'].map((v) => <option key={v} value={v} />)}
+              </datalist>
+            </>
+          ) : (
+            <select className={`${select} min-w-0 flex-1`} value={settings.voice.voiceName} onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, voiceName: e.target.value } }))} aria-label="Voice">
+              <option value="">System default voice</option>
+              {voices.map((v) => <option key={v}>{v}</option>)}
+            </select>
+          )}
           <label className="flex items-center gap-2 text-sm text-dim">
             Rate
             <input type="range" min={0.7} max={1.4} step={0.05} value={settings.voice.rate} onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, rate: Number(e.target.value) } }))} className="accent-glow" />
             <span className="w-8 font-mono text-xs tabular-nums">{settings.voice.rate.toFixed(2)}</span>
           </label>
-          <button onClick={() => voice.speak('Good evening. All systems are operational.', settings.voice)} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-white/80 ring-1 ring-line hover:bg-white/5">
+          <button onClick={testVoice} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-white/80 ring-1 ring-line hover:bg-white/5">
             <Volume2 className="size-4" /> Test
           </button>
         </div>
+        {natural && voiceError && <p className="text-xs text-warn">{voiceError} Until then JARVIS uses the browser voice.</p>}
         <label className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-white/90">
           <span className="min-w-40 flex-1">
             Speech engine

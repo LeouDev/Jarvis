@@ -140,7 +140,7 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
     const pending: PendingAction[] = [];
     for (const call of res.toolCalls) {
       const name = call.function.name;
-      const plan = planToolCall(call, settings, untrustedSinceUser([...messages, ...results]));
+      const plan = planToolCall(call, settings, untrustedSinceUser([...messages, ...results]), lastUserText);
       if (plan.kind === 'invalid') {
         results.push(toolMessage({ id: call.id, name }, plan.error));
       } else if (plan.kind === 'blocked') {

@@ -9,6 +9,7 @@ export interface ServerConfig {
   github: { token: boolean; username: string | null };
   embeddings: boolean;
   stt: boolean;
+  tts: boolean;
   encryption: boolean;
 }
 

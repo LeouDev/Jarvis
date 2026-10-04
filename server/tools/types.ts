@@ -24,6 +24,8 @@ export interface JarvisTool<T = any> {
   approval?(input: T, settings: Settings): ApprovalDecision;
   /** Returns text from outside the user's control (web, files, screen…) that could carry injected instructions. */
   untrustedOutput?: boolean;
+  /** The user's own words must match this for the tool to run (stops the model inferring intent from noise). */
+  requiresIntent?: RegExp;
   execute?(input: T, ctx: ToolContext): Promise<ToolResult>;
 }
 

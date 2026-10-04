@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AITool, AIToolCall } from '../ai/AIProvider.js';
 import type { Settings } from '../../shared/types.js';
-import { completeTask, createTask, deleteMemory, getCurrentTime, listTasks, saveMemory, searchMemory } from './core.js';
+import { completeTask, createTask, deleteMemory, getCurrentTime, listTasks, saveMemory, saveProject, searchMemory } from './core.js';
 import {
   clipboard, createCalendarEvent, createFile, createNote, createReminder, lookAtScreen, mediaControl, openApplication,
   openProject, openWebsite, readFile, runTerminal, searchFiles, setVolume, systemStatus,
@@ -10,7 +10,7 @@ import { github, socialGetAccount, socialPublish, webSearch } from './services.j
 import type { ApprovalDecision, JarvisTool } from './types.js';
 
 export const TOOLS: JarvisTool[] = [
-  getCurrentTime, searchMemory, saveMemory, deleteMemory, createTask, listTasks, completeTask,
+  getCurrentTime, searchMemory, saveMemory, deleteMemory, saveProject, createTask, listTasks, completeTask,
   webSearch, github, socialGetAccount, socialPublish,
   openApplication, openWebsite, runTerminal, readFile, searchFiles, createFile, systemStatus, openProject,
   mediaControl, setVolume, createReminder, createNote, createCalendarEvent, lookAtScreen, clipboard,
@@ -56,9 +56,11 @@ export type ToolPlan =
   | { kind: 'pending'; tool: JarvisTool; input: any; needsApproval: boolean; reason?: string };
 
 /** Decides what happens to a model tool call. Tool parameters are never trusted: they are schema-validated first. */
-export function planToolCall(call: AIToolCall, settings: Settings, untrusted = false): ToolPlan {
+export function planToolCall(call: AIToolCall, settings: Settings, untrusted = false, userText?: string): ToolPlan {
   const tool = getTool(call.function.name);
   if (!tool) return { kind: 'invalid', error: `Unknown tool "${call.function.name}".` };
+  if (tool.requiresIntent && userText !== undefined && !tool.requiresIntent.test(userText))
+    return { kind: 'invalid', error: "Not done: the user's message didn't clearly ask for this (it may be mis-heard speech). Ask what they meant." };
   let args: unknown;
   try {
     args = JSON.parse(call.function.arguments || '{}');

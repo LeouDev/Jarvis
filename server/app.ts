@@ -9,6 +9,7 @@ import { chatRoute } from './routes/chat.js';
 import { FacebookProvider } from './social/index.js';
 import { TOOLS } from './tools/index.js';
 import { transcribe, vocabulary, whisperLanguage } from './voice/transcribe.js';
+import { SpeechUnavailableError, synthesize } from './voice/speak.js';
 import { webSearchProvider } from './web/search.js';
 
 export const app = new Hono<Env>().basePath('/api');
@@ -32,6 +33,7 @@ app.get('/config', (c) =>
     github: { token: Boolean(process.env.GITHUB_TOKEN), username: process.env.GITHUB_USERNAME ?? null },
     embeddings: Boolean(process.env.GEMINI_API_KEY),
     stt: Boolean(process.env.GROQ_API_KEY),
+    tts: Boolean(process.env.GROQ_API_KEY),
     encryption: Boolean(process.env.TOKEN_ENCRYPTION_KEY),
   }),
 );
@@ -41,6 +43,21 @@ app.get('/tools', (c) =>
 );
 
 app.post('/chat', chatRoute);
+
+const SpeakBody = z.object({ text: z.string().trim().min(1).max(200), voice: z.string().regex(/^[a-z]{2,20}$/).default('troy') });
+
+// One sentence in, WAV out. 409/429 tell the browser to fall back to its built-in voice.
+app.post('/speak', async (c) => {
+  const body = SpeakBody.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: 'Send up to 200 characters of text.' }, 400);
+  try {
+    const audio = await synthesize(body.data.text, body.data.voice);
+    return new Response(audio, { headers: { 'content-type': 'audio/wav', 'cache-control': 'no-store' } });
+  } catch (err) {
+    if (err instanceof SpeechUnavailableError) return c.json({ error: err.message }, err.status);
+    throw err;
+  }
+});
 
 // Raw audio in (WAV from the browser), text out. Short commands only.
 app.post('/transcribe', async (c) => {

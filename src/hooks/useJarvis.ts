@@ -5,6 +5,7 @@ import { streamChat } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { chime, NoSpeechError, stripWake, voice } from '../lib/voice';
 import { whisperVoice } from '../lib/whisper';
+import { createSpeaker, sentenceChunker, type Speaker } from '../lib/speech';
 
 export type JarvisState = 'idle' | 'listening' | 'processing' | 'thinking' | 'speaking' | 'executing';
 
@@ -24,7 +25,7 @@ const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
  * The conversation state machine:
  * IDLE → LISTENING → PROCESSING → THINKING → (EXECUTING ↔ approval) → SPEAKING → IDLE
  */
-export function useJarvis(settings: Settings, onTurnComplete: () => void, whisperAvailable = false) {
+export function useJarvis(settings: Settings, onTurnComplete: () => void, whisperAvailable = false, naturalVoiceAvailable = false) {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [state, setState] = useState<JarvisState>('idle');
   const [interim, setInterim] = useState('');
@@ -52,13 +53,29 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
       return ms.map((m, i) => (i === ms.length - 1 ? { ...m, executions: [...m.executions, ex] } : m));
     });
 
-  const speak = useCallback(async (text: string) => {
-    const { voice: v } = settingsRef.current;
-    if (!v.speak || !text.trim() || !voice.supportsOutput) return setState('idle');
-    setState('speaking');
-    await voice.speak(text, { voiceName: v.voiceName, rate: v.rate });
-    setState((s) => (s === 'speaking' ? 'idle' : s));
+  const naturalRef = useRef(naturalVoiceAvailable);
+  naturalRef.current = naturalVoiceAvailable;
+  const speakerRef = useRef<Speaker | null>(null);
+  const stopSpeaking = useCallback(() => {
+    speakerRef.current?.stop();
+    speakerRef.current = null;
+    voice.stopSpeaking();
   }, []);
+
+  /** A fresh speaker for this reply (sentences are spoken as they stream in), or null when voice is off. */
+  const newSpeaker = () => {
+    stopSpeaking();
+    const v = settingsRef.current.voice;
+    if (!v.speak) return null;
+    speakerRef.current = createSpeaker({
+      natural: v.output === 'natural' && naturalRef.current,
+      naturalVoice: v.naturalVoice,
+      browserVoice: v.voiceName,
+      rate: v.rate,
+      onStart: () => setState((s) => (s === 'listening' || s === 'executing' ? s : 'speaking')),
+    });
+    return speakerRef.current;
+  };
 
   const askApproval = (action: PendingAction) =>
     new Promise<boolean>((resolve) => {
@@ -76,7 +93,8 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
     setState('processing');
     setError('');
     setMessages((ms) => [...ms, { id: uid(), role: 'assistant', content: '', executions: [], notices: [] }]);
-    let text = '';
+    const speaker = newSpeaker();
+    const chunker = sentenceChunker((chunk) => speaker?.enqueue(chunk));
     let actions: PendingAction[] = [];
     try {
       for await (const ev of streamChat({ ...body, timezone })) {
@@ -84,36 +102,39 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
           convRef.current = ev.id;
           setConversationId(ev.id);
         } else if (ev.type === 'text') {
-          setState('thinking');
-          text += ev.delta;
+          setState((s) => (s === 'speaking' ? s : 'thinking'));
+          chunker.push(ev.delta);
           patchLast((m) => ({ ...m, content: m.content + ev.delta }));
         } else if (ev.type === 'notice') patchLast((m) => ({ ...m, notices: [...m.notices, ev.message] }));
         else if (ev.type === 'tool') upsertExecution(ev.execution);
         else if (ev.type === 'actions') actions = ev.actions;
         else if (ev.type === 'error') {
-          text += ` ${ev.message}`;
+          chunker.push(` ${ev.message}`);
           patchLast((m) => ({ ...m, content: m.content ? `${m.content}\n\n${ev.message}` : ev.message, error: true }));
         }
       }
     } catch (err) {
       const message = (err as Error).message || "I can't reach the JARVIS server right now.";
-      text = message;
+      chunker.push(message);
       patchLast((m) => ({ ...m, content: message, error: true }));
     }
+    chunker.flush();
     if (!actions.length) {
       // Drop a reply bubble that ended up with nothing in it.
       setMessages((ms) => ms.filter((m, i) => i !== ms.length - 1 || m.content || m.executions.length || m.notices.length));
       onTurnComplete();
-      await speak(text);
+      await speaker?.done();
+      if (speakerRef.current === speaker) speakerRef.current = null;
+      setState((s) => (s === 'speaking' || s === 'thinking' || s === 'processing' ? 'idle' : s));
       // Conversation mode: after answering a spoken request, listen again without a click.
       if (voiceTurn.current && settingsRef.current.voice.followUp) return capture(true);
       return;
     }
-    if (text.trim()) void speak(text);
+    // Keep talking ("I need your approval…") while the dialog is up.
     const resolutions: ActionResolution[] = [];
     for (const action of actions) {
       const approved = action.needsApproval ? await askApproval(action) : true;
-      voice.stopSpeaking();
+      stopSpeaking();
       if (!approved) {
         resolutions.push({ id: action.id, approved: false });
         upsertExecution({ id: action.id, tool: action.tool, summary: action.summary, status: 'rejected' });
@@ -139,14 +160,14 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
     const message = text.trim();
     if (!message || busy) return;
     voiceTurn.current = viaVoice;
-    voice.stopSpeaking();
+    stopSpeaking();
     setMessages((ms) => [...ms, { id: uid(), role: 'user', content: message, executions: [], notices: [] }]);
     await run({ conversationId: convRef.current ?? undefined, message });
   };
 
   /** Records one utterance and sends it. `quiet` = silence just ends listening (follow-ups, wake word). */
   const capture = async (quiet: boolean) => {
-    voice.stopSpeaking();
+    stopSpeaking();
     setError('');
     setInterim('');
     setState('listening');
@@ -177,7 +198,7 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
   /** Interrupt: stop talking/listening immediately (and don't auto-listen afterwards). */
   const interrupt = useCallback(() => {
     voiceTurn.current = false;
-    voice.stopSpeaking();
+    stopSpeaking();
     sttRef.current.stopListening();
     setState((s) => (s === 'speaking' || s === 'listening' ? 'idle' : s));
   }, []);

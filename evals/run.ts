@@ -1,7 +1,8 @@
 // Scores a model on evals/commands.ts.  npm run eval -- --provider=groq  [--model=openai/gpt-oss-120b] [--delay=2500]
 import { PROVIDERS } from '../server/ai/AIManager.js';
 import { systemPrompt } from '../server/memory/context.js';
-import { selectTools, toAITool } from '../server/tools/index.js';
+import { planToolCall, selectTools, toAITool } from '../server/tools/index.js';
+import { DEFAULT_SETTINGS } from '../shared/types.js';
 import { CASES, type Call, type Case } from './commands.js';
 
 try {
@@ -18,13 +19,13 @@ const modelEnv = { gemini: 'GEMINI_MODEL', groq: 'GROQ_MODEL', openrouter: 'OPEN
 if (arg('model')) process.env[modelEnv] = arg('model');
 const delay = Number(arg('delay') ?? (providerId === 'gemini' ? 4500 : 2500)); // stay under free-tier rate limits
 
-const MEMORIES = [
-  'Leou is building a project called JARVIS.',
-  "Dicta is Leou's social quote app, located at /Volumes/Mac Storage/Development/dicta.",
-  "13C is one of Leou's projects; its website is https://13c.online.",
-  'Kassix is a POS app: 60 days free, then 149 pesos a month.',
+const MEMORIES = ['Leou is building a project called JARVIS.', 'Kassix is a POS app: 60 days free, then 149 pesos a month.'];
+const PROJECTS = [
+  'Dicta · Social quote app · folder /Volumes/Mac Storage/Development/dicta · repo LeouDev/dicta',
+  '13C (aka thirteen c) · site https://13c.online · repo LeouDev/13c',
+  'Kassix · POS app · folder /Volumes/Mac Storage/Development/kassix',
 ];
-const system = systemPrompt({ name: 'Leou', now: 'Monday, October 5, 2026 at 10:00 AM', tz: 'Asia/Manila', platform: 'facebook', memories: MEMORIES });
+const system = systemPrompt({ name: 'Leou', now: 'Monday, October 5, 2026 at 10:00 AM', tz: 'Asia/Manila', platform: 'facebook', memories: MEMORIES, projects: PROJECTS });
 
 function judge(c: Case, calls: Call[]): string | null {
   const names = calls.map((x) => x.name);
@@ -57,7 +58,10 @@ for (const c of CASES) {
         await new Promise((r) => setTimeout(r, 20_000));
       }
     }
-    const calls = res.toolCalls.map((t) => ({ name: t.function.name, args: JSON.parse(t.function.arguments || '{}') }));
+    // Score what JARVIS would actually do: calls its guards reject (bad args, no clear intent) don't happen.
+    const calls = res!.toolCalls
+      .filter((t) => planToolCall(t, DEFAULT_SETTINGS, false, c.say).kind !== 'invalid')
+      .map((t) => ({ name: t.function.name, args: JSON.parse(t.function.arguments || '{}') }));
     verdict = judge(c, calls);
   } catch (e) {
     verdict = `error: ${(e as Error).message.slice(0, 100)}`;

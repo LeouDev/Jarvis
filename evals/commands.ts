@@ -36,9 +36,13 @@ export const CASES: Case[] = [
   { say: "What's in my clipboard?", ok: ['clipboard'], args: (c) => c.args.action === 'read' },
   // Services
   { say: 'Create a Facebook post for my 13C project.', ok: ['social_publish'], args: (c) => c.args.platform === 'facebook' && String(c.args.caption ?? '').length > 20 },
-  { say: 'Post on Instagram about Kassix.', ok: ['none'], forbid: ['social_publish'], why: 'Instagram is not supported yet' },
+  { say: 'Post on Instagram about Kassix.', ok: ['none', 'social_getAccount'], forbid: ['social_publish'], why: 'Instagram is not supported yet' },
   { say: 'Search the web for the latest Next.js release.', ok: ['webSearch'] },
   { say: 'List my GitHub repos.', ok: ['github'], args: (c) => c.args.action === 'listRepos' },
   { say: 'Add a task to finish the landing page.', ok: ['createTask', 'createReminder'] },
+  // Projects
+  { say: "Kassix's repo is LeouDev/kassix-pos.", ok: ['saveProject'], args: (c) => has(c.args.name, 'kassix') && c.args.repo === 'LeouDev/kassix-pos' },
+  { say: 'Show the latest commits for 13C.', ok: ['github'], args: (c) => c.args.action === 'listCommits' && has(c.args.repo, '13c') },
+  { say: 'Open the Kassix folder in Finder.', ok: ['openProject'], args: (c) => has(c.args.path, 'kassix') && c.args.app === 'Finder' },
   { say: 'What are my tasks?', ok: ['listTasks'] },
 ];

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MEMORY_CATEGORIES, saveMemory as save, searchMemories } from '../memory/memory.js';
+import { projectLine, saveProject as storeProject } from '../memory/projects.js';
 import { fail, ok, type JarvisTool } from './types.js';
 
 export const getCurrentTime: JarvisTool<{}> = {
@@ -86,5 +87,23 @@ export const completeTask: JarvisTool<{ id: string }> = {
   async execute({ id }, { db }) {
     const { data } = await db.from('tasks').update({ status: 'done', updated_at: new Date().toISOString() }).eq('id', id).select('title');
     return data?.length ? ok(`Marked "${data[0].title}" done.`) : fail('Task not found.');
+  },
+};
+
+export const saveProject: JarvisTool<{ name: string; path?: string; website?: string; repo?: string; description?: string; aliases?: string[] }> = {
+  name: 'saveProject', group: 'memory', permission: 'write', runOn: 'server',
+  description:
+    "Create or update one of the user's projects: folder path, website, GitHub repo (owner/name), short description, aliases. Use when the user tells you where a project lives or its site/repo; prefer this over saveMemory for project details. Only pass fields you were told.",
+  schema: z.object({
+    name: z.string().min(1).max(80),
+    path: z.string().max(1000).optional(),
+    website: z.url({ protocol: /^https?$/ }).optional(),
+    repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, 'owner/name').optional(),
+    description: z.string().max(500).optional(),
+    aliases: z.array(z.string().min(1).max(40)).max(5).optional(),
+  }),
+  summary: (i) => `Saved project ${i.name}`,
+  async execute(input, { db }) {
+    return ok(`Saved: ${projectLine(await storeProject(db, input))}`);
   },
 };
