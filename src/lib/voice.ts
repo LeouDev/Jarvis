@@ -5,7 +5,7 @@ export interface VoiceProvider {
   readonly supportsInput: boolean;
   readonly supportsOutput: boolean;
   /** Records one utterance. onEnd fires when recording stops (before any server-side transcription). */
-  listen(opts: { onInterim?: (text: string) => void; lang?: string; onEnd?: () => void }): Promise<string>;
+  listen(opts: { onInterim?: (text: string) => void; lang?: string; onEnd?: () => void; pauseMs?: number }): Promise<string>;
   stopListening(): void;
   /** Listens continuously for the wake word; calls onWake with whatever followed it. Returns a stop function. */
   listenForWakeWord(opts: WakeOptions): () => void;
@@ -109,7 +109,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
   get supportsInput() { return Boolean(RecognitionCtor); }
   get supportsOutput() { return typeof window !== 'undefined' && 'speechSynthesis' in window; }
 
-  listen({ onInterim, lang }: { onInterim?: (t: string) => void; lang?: string } = {}) {
+  listen({ onInterim, lang, pauseMs = PAUSE_MS }: { onInterim?: (t: string) => void; lang?: string; pauseMs?: number } = {}) {
     return new Promise<string>((resolve, reject) => {
       if (!RecognitionCtor) return reject(new Error('Voice input is not supported in this browser. Try Chrome or Safari.'));
       this.stopListening();
@@ -123,7 +123,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
       let spoke = false;
       let lastHeard = Date.now();
       let failed = false;
-      const watchdog = setInterval(() => Date.now() - lastHeard > (spoke ? PAUSE_MS : NO_SPEECH_MS) && r.stop(), 200);
+      const watchdog = setInterval(() => Date.now() - lastHeard > (spoke ? pauseMs : NO_SPEECH_MS) && r.stop(), 200);
       r.onresult = (e) => {
         let interim = '';
         finalText = '';

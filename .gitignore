@@ -12,3 +12,5 @@ local-agent/.agent-token
 local-agent/config/agent.config.json
 # Supabase CLI cache
 supabase/.temp
+# Copied from node_modules by scripts/copy-vad-assets.mjs
+public/vad

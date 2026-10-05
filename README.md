@@ -54,6 +54,8 @@ npm run agent                 # second terminal: Mac agent on http://localhost:3
 ## Voice
 
 - **Push to talk:** click **Speak** or the orb. Press `Esc` or click the orb while JARVIS is talking to interrupt it.
+- **Speech detection:** Silero VAD (a neural voice detector) runs in the browser. It tells speech from noise and keeps 400 ms of pre-roll so your first word isn't clipped. It ignores sounds shorter than 250 ms and ends your turn after a pause you choose under **Settings → Voice → Pause before JARVIS replies** (0.8 s, 1.3 s or 2 s). The model and runtime (about 16 MB, cached) download only the first time you use voice.
+- **Barge-in** (on by default, Whisper engine): start talking while JARVIS speaks and it stops to listen. It uses a stricter threshold so JARVIS's own voice doesn't interrupt it. Works best with headphones.
 - **Follow-up** (on by default): after answering something you *said*, JARVIS keeps listening for a few seconds, so a conversation flows without clicking.
 - **Wake word** (off by default): click the ear icon or go to **Settings → Voice**, then say "Jarvis…" while the tab is open, e.g. "Jarvis, open VS Code". If you only say "Jarvis", you hear a chime and it waits for the command.
   - This uses the browser's built-in speech recognition (Chrome, Safari), so the microphone stays on, and in Chrome the audio is processed by Google's speech service.

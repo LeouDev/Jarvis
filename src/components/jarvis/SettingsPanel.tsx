@@ -95,6 +95,23 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
           checked={settings.voice.followUp}
           onChange={(followUp) => update((s) => ({ ...s, voice: { ...s.voice, followUp } }))}
         />
+        <label className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-white/90">
+          <span className="min-w-40 flex-1">
+            Pause before JARVIS replies
+            <span className="block text-xs text-faint">How long you can pause mid-sentence before JARVIS takes its turn.</span>
+          </span>
+          <select className={`${select} w-full sm:w-56`} value={settings.voice.turnPause} onChange={(e) => update((s) => ({ ...s, voice: { ...s.voice, turnPause: e.target.value as 'short' | 'normal' | 'long' } }))} aria-label="Pause before reply">
+            <option value="short">Short (0.8 s)</option>
+            <option value="normal">Normal (1.3 s)</option>
+            <option value="long">Long (2 s) — I think while I talk</option>
+          </select>
+        </label>
+        <Toggle
+          label="Interrupt by talking"
+          hint="Start speaking while JARVIS talks and it stops to listen. Works best with headphones; needs the Whisper speech engine."
+          checked={settings.voice.bargeIn}
+          onChange={(bargeIn) => update((s) => ({ ...s, voice: { ...s.voice, bargeIn } }))}
+        />
         <Toggle
           label="Wake word: “Jarvis”"
           hint="Hands-free while this tab is open, e.g. “Jarvis, open VS Code”. The browser keeps the microphone on and its speech service (Google in Chrome) processes audio continuously."

@@ -2,12 +2,23 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwind from '@tailwindcss/vite';
 import { getRequestListener } from '@hono/node-server';
+import { createReadStream } from 'node:fs';
+import vadAssets from './scripts/vad-assets.json';
 
 // Serves /api/* from server/app.ts inside the Vite dev server (one process, hot-reloaded).
 // On Vercel the same app is served by api/index.ts.
 const api = (): Plugin => ({
   name: 'jarvis-api',
   configureServer(server) {
+    // Silero VAD files straight from node_modules: Vite won't let runtime import() load JS from public/.
+    server.middlewares.use((req, res, next) => {
+      const name = req.url?.match(/^\/vad\/([^?]+)/)?.[1] as keyof typeof vadAssets | undefined;
+      const source = name && vadAssets[name];
+      if (!source) return next();
+      const type = name.endsWith('.wasm') ? 'application/wasm' : name.endsWith('.onnx') ? 'application/octet-stream' : 'text/javascript';
+      res.setHeader('content-type', type);
+      createReadStream(source).pipe(res);
+    });
     server.middlewares.use(async (req, res, next) => {
       if (!req.url?.startsWith('/api/')) return next();
       const { app } = await server.ssrLoadModule('/server/app.ts');

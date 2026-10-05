@@ -5,6 +5,7 @@ import { streamChat } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { chime, NoSpeechError, stripWake, voice } from '../lib/voice';
 import { whisperVoice } from '../lib/whisper';
+import { stopCapture, TURN_PAUSE_MS } from '../lib/vad';
 import { createSpeaker, sentenceChunker, type Speaker } from '../lib/speech';
 
 export type JarvisState = 'idle' | 'listening' | 'processing' | 'thinking' | 'speaking' | 'executing';
@@ -172,7 +173,8 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
     setInterim('');
     setState('listening');
     try {
-      const heard = await sttRef.current.listen({ onInterim: setInterim, lang: settingsRef.current.voice.lang, onEnd: () => setState('processing') });
+      const v = settingsRef.current.voice;
+      const heard = await sttRef.current.listen({ onInterim: setInterim, lang: v.lang, pauseMs: TURN_PAUSE_MS[v.turnPause], onEnd: () => setState('processing') });
       setInterim('');
       const command = stripWake(heard); // "Jarvis, open VS Code" → "open VS Code"
       if (heard && !command) {
@@ -202,6 +204,37 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
     sttRef.current.stopListening();
     setState((s) => (s === 'speaking' || s === 'listening' ? 'idle' : s));
   }, []);
+
+  // Barge-in: while JARVIS talks, a clear voice cuts it off and becomes the next request.
+  const bargeIn = settings.voice.bargeIn && stt === whisperVoice;
+  useEffect(() => {
+    if (!bargeIn || state !== 'speaking') return;
+    let interrupted = false;
+    let cancelled = false;
+    const v = settingsRef.current.voice;
+    whisperVoice
+      .listenForInterruption({
+        lang: v.lang,
+        pauseMs: TURN_PAUSE_MS[v.turnPause],
+        onInterrupt: () => {
+          if (cancelled) return;
+          interrupted = true;
+          voiceTurn.current = false; // the interrupted reply shouldn't trigger a follow-up listen
+          stopSpeaking();
+          setState('listening');
+        },
+      })
+      .then((text) => {
+        if (cancelled && !interrupted) return;
+        const command = stripWake(text);
+        if (command) void latest.current.send(command, true);
+        else setState((s) => (s === 'listening' ? 'idle' : s));
+      });
+    return () => {
+      cancelled = true;
+      if (!interrupted) void stopCapture(); // reply finished without interruption
+    };
+  }, [bargeIn, state, stopSpeaking]);
 
   // What the always-on mic last heard, shown briefly so you can tell "not heard" from "mis-heard".
   const [heard, setHeard] = useState('');

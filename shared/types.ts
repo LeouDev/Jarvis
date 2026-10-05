@@ -7,7 +7,8 @@ export interface Settings {
   /** followUp: keep listening briefly after a spoken reply. wakeWord: always listen for "Jarvis" while open. */
   /** engine: 'whisper' (server, more accurate, knows your project names) or 'browser' (Chrome/Safari built-in). */
   /** output: 'natural' (Orpheus on Groq) or 'browser' speechSynthesis; naturalVoice: Orpheus voice name. */
-  voice: { speak: boolean; voiceName: string; rate: number; followUp: boolean; wakeWord: boolean; lang: string; engine: 'whisper' | 'browser'; output: 'natural' | 'browser'; naturalVoice: string };
+  /** turnPause: silence that ends your turn. bargeIn: talking over JARVIS interrupts it. */
+  voice: { speak: boolean; voiceName: string; rate: number; followUp: boolean; wakeWord: boolean; lang: string; engine: 'whisper' | 'browser'; output: 'natural' | 'browser'; naturalVoice: string; turnPause: 'short' | 'normal' | 'long'; bargeIn: boolean };
   memory: { autoRecall: boolean };
   /** Posting and sending messages always require approval; these two are user-adjustable. */
   approvals: { files: boolean; terminal: boolean };
@@ -16,7 +17,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   provider: '',
-  voice: { speak: true, voiceName: '', rate: 1, followUp: true, wakeWord: false, lang: '', engine: 'whisper', output: 'natural', naturalVoice: 'troy' }, // lang '' = browser language
+  voice: { speak: true, voiceName: '', rate: 1, followUp: true, wakeWord: false, lang: '', engine: 'whisper', output: 'natural', naturalVoice: 'troy', turnPause: 'normal', bargeIn: true }, // lang '' = browser language
   memory: { autoRecall: true },
   approvals: { files: true, terminal: true },
   social: { defaultPlatform: 'facebook' },

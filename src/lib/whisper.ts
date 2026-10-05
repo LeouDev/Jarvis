@@ -3,15 +3,15 @@
 // still used to spot the wake word cheaply; the command itself is re-transcribed from recorded audio.
 import { transcribeAudio } from './api';
 import { BrowserVoiceProvider, NoSpeechError, stripWake, type WakeOptions } from './voice';
+import { captureUtterance, micLevel, stopCapture, TURN_PAUSE_MS } from './vad';
+
+export { micLevel };
 
 const RATE = 16_000;
 const RING_SECONDS = 30;
-const PAUSE_MS = 2000; // silence that ends a command once you've started speaking
 const NO_SPEECH_MS = 8000;
 const MAX_MS = 30_000;
 
-/** Live input level (0–1) for the visualizer. */
-export const micLevel = { value: 0 };
 
 /** Block-average resampling (e.g. 48 kHz → 16 kHz). */
 export function downsample(input: Float32Array, ratio: number): Float32Array {
@@ -171,45 +171,30 @@ export async function recordSample(ms = 4000) {
 }
 
 export class WhisperVoiceProvider extends BrowserVoiceProvider {
-  private cancel: (() => void) | null = null;
 
   get supportsInput() {
     return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
   }
 
-  async listen({ lang, onEnd }: { onInterim?: (t: string) => void; lang?: string; onEnd?: () => void } = {}) {
-    this.stopListening();
-    const release = await mic.acquire();
-    try {
-      const from = mic.total;
-      const started = Date.now();
-      const until = await new Promise<number>((resolve, reject) => {
-        const finish = (ok: boolean) => {
-          clearInterval(timer);
-          this.cancel = null;
-          ok ? resolve(mic.total) : reject(new NoSpeechError());
-        };
-        const timer = setInterval(() => {
-          const spoke = mic.lastVoice > from;
-          if (!spoke && Date.now() - started > NO_SPEECH_MS) finish(false);
-          else if (spoke && ((mic.total - mic.lastVoice) / RATE) * 1000 > PAUSE_MS) finish(true);
-          else if (Date.now() - started > MAX_MS) finish(spoke);
-        }, 100);
-        this.cancel = () => finish(mic.lastVoice > from); // Stop button: send what was said so far
-      });
-      onEnd?.();
-      const audio = mic.slice(Math.max(from, mic.speechStart - 0.3 * RATE), until);
-      if (peak(audio) < MIN_PEAK) throw new NoSpeechError(); // don't let Whisper hallucinate on silence
-      const text = await transcribeAudio(encodeWav(audio), lang);
-      if (!text) throw new NoSpeechError();
-      return text;
-    } finally {
-      release();
-    }
+  /** One command: Silero VAD finds where your speech starts and ends, Whisper transcribes it. */
+  async listen({ lang, onEnd, pauseMs }: { onInterim?: (t: string) => void; lang?: string; onEnd?: () => void; pauseMs?: number } = {}) {
+    const audio = await captureUtterance({ pauseMs: pauseMs ?? TURN_PAUSE_MS.normal, noSpeechMs: NO_SPEECH_MS, maxMs: MAX_MS });
+    if (!audio || peak(audio) < MIN_PEAK) throw new NoSpeechError(); // don't let Whisper hallucinate on silence
+    onEnd?.();
+    const text = await transcribeAudio(encodeWav(audio), lang);
+    if (!text) throw new NoSpeechError();
+    return text;
   }
 
   stopListening() {
-    this.cancel?.();
+    void stopCapture();
+  }
+
+  /** Barge-in: while JARVIS talks, a clear voice interrupts it; returns what you said. */
+  async listenForInterruption({ lang, pauseMs, onInterrupt }: { lang?: string; pauseMs?: number; onInterrupt: () => void }) {
+    const audio = await captureUtterance({ pauseMs: pauseMs ?? TURN_PAUSE_MS.normal, strict: true, maxMs: MAX_MS, onSpeechStart: onInterrupt });
+    if (!audio || peak(audio) < MIN_PEAK) return '';
+    return transcribeAudio(encodeWav(audio), lang).catch(() => '');
   }
 
   /** Browser recognizer spots "Jarvis"; Whisper re-transcribes that whole utterance from the recorded audio. */
