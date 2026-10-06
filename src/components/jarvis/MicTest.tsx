@@ -33,7 +33,8 @@ export function MicTest({ lang, whisper }: { lang: string; whisper: boolean }) {
       setResult(r);
       if (whisper) {
         setPhase('transcribing');
-        r.heard = await transcribeAudio(s.wav, lang).catch((e: Error) => ((r.error = e.message), ''));
+        const heard = await transcribeAudio(s.wav, lang).catch((e: Error) => ((r.error = e.message), { text: '', unclear: false }));
+        r.heard = heard.unclear ? `${heard.text} (low confidence — JARVIS would ask you to repeat)` : heard.text;
         setResult({ ...r });
       }
     } catch (e) {

@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { waitUntil } from '@vercel/functions';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import * as ai from '../ai/AIManager.js';
@@ -57,6 +58,7 @@ async function insertMessages(db: SupabaseClient, conversationId: string, msgs: 
   const { error } = await db.from('messages').insert(
     msgs.map((m) => ({ conversation_id: conversationId, role: m.role, content: m.content ?? '', tool_calls: m.tool_calls ?? null, tool_call_id: m.tool_call_id ?? null })),
   );
+  if (error?.code === '23503') throw new UserFacingError('That conversation no longer exists.');
   if (error) throw new Error(`messages insert: ${error.message}`);
 }
 
@@ -95,17 +97,20 @@ export async function chatRoute(c: Context<Env>) {
 }
 
 async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Send) {
+  const started = Date.now();
   const timezone = validTz(body.timezone);
-  // Start the memory lookup (embedding + search, ~200 ms) now instead of after the other queries.
+  // Independent work runs together: every database round trip here sits before the first word.
   const recall = body.message ? searchMemories(db, body.message, 5).catch(() => []) : null;
-  const [settings, profile] = await Promise.all([loadSettings(db), db.from('users').select('display_name').maybeSingle()]);
+  const [settings, profile] = await Promise.all([
+    loadSettings(db),
+    db.from('users').select('display_name').maybeSingle(),
+    // A new message cancels actions the user never answered (their results must precede the message).
+    body.message && body.conversationId ? cancelUnresolved(db, body.conversationId) : null,
+  ]);
   const ctx: ToolContext = { db, settings, timezone };
 
   let conversationId = body.conversationId;
-  if (conversationId) {
-    const { data } = await db.from('conversations').select('id').eq('id', conversationId).maybeSingle();
-    if (!data) throw new UserFacingError('That conversation no longer exists.');
-  } else {
+  if (!conversationId) {
     if (!body.message) throw new UserFacingError('Nothing to continue.');
     const { data, error } = await db.from('conversations').insert({ title: truncate(body.message, 60) }).select('id').single();
     if (error) throw new Error(`conversation insert: ${error.message}`);
@@ -113,19 +118,33 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
   }
   send({ type: 'conversation', id: conversationId });
 
-  if (body.resolutions?.length) await applyResolutions(ctx, conversationId, body.resolutions, send);
-  await cancelUnresolved(db, conversationId);
-  if (body.message) {
-    await insertMessages(db, conversationId, [{ role: 'user', content: body.message }]);
-    await db.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+  let resolved: ResolvedAction[] = [];
+  let cancelled = 0;
+  if (body.resolutions?.length) {
+    resolved = await applyResolutions(ctx, conversationId, body.resolutions, send);
+    cancelled = await cancelUnresolved(db, conversationId);
   }
+  if (body.message)
+    await Promise.all([
+      insertMessages(db, conversationId, [{ role: 'user', content: body.message }]),
+      db.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId),
+    ]);
 
   const { messages, lastUserText } = await buildContext(db, conversationId, {
     settings, timezone, recall, name: profile.data?.display_name || 'there',
   });
   const tools = selectTools(lastUserText).map(toAITool);
+  console.log(`[chat] ready for the model in ${Date.now() - started}ms`);
 
-  for (let step = 0; step < MAX_STEPS; step++) {
+  // Every action just succeeded and each has its own short confirmation: say that, skip the second model call.
+  const lines = resolved.map((r) => (r.status === 'succeeded' && !r.needsApproval ? confirmation(r.tool, r.input) : null));
+  const confirmed = resolved.length > 0 && !cancelled && lines.every(Boolean);
+  if (confirmed) {
+    const said = messages.findLast((m) => m.role === 'assistant' && m.tool_calls?.length)?.content?.trim();
+    if (!said) await sayConfirmation(db, conversationId, lines as string[], messages, send);
+  }
+
+  for (let step = 0; step < MAX_STEPS && !confirmed; step++) {
     const res = await ai.chat(messages, tools, {
       preferred: settings.provider,
       onText: (delta) => send({ type: 'text', delta }),
@@ -138,9 +157,12 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
 
     const results: AIMessage[] = [];
     const pending: PendingAction[] = [];
+    let allConfirmed = true; // every call is a plain action that succeeded and has its own confirmation
+    const lines: string[] = [];
     for (const call of res.toolCalls) {
       const name = call.function.name;
       const plan = planToolCall(call, settings, untrustedSinceUser([...messages, ...results]), lastUserText);
+      if (plan.kind !== 'execute') allConfirmed = false;
       if (plan.kind === 'invalid') {
         results.push(toolMessage({ id: call.id, name }, plan.error));
       } else if (plan.kind === 'blocked') {
@@ -152,6 +174,9 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
         const summary = plan.tool.summary(plan.input);
         send({ type: 'tool', execution: { id: call.id, tool: name, summary, status: 'running' } });
         const r = await runServerTool(plan.tool, plan.input, ctx);
+        const line = r.ok ? confirmation(name, plan.input) : null;
+        if (line) lines.push(line);
+        else allConfirmed = false;
         const status: ExecutionStatus = r.ok ? 'succeeded' : 'failed';
         await logActivity(db, { actor: 'jarvis', action: summary, tool: name, status, input: plan.input, result: r.output });
         send({ type: 'tool', execution: { id: call.id, tool: name, summary, status, output: truncate(r.output, 2000) } });
@@ -179,13 +204,31 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
       send({ type: 'actions', actions: pending });
       return;
     }
+    if (allConfirmed) {
+      if (!res.text.trim()) await sayConfirmation(db, conversationId, lines, messages, send);
+      break;
+    }
     if (step === MAX_STEPS - 1) send({ type: 'notice', message: 'Stopped after several tool steps. Ask me to continue if needed.' });
   }
-  await maybeSummarize(db, conversationId, settings.provider).catch((err) => console.error('[summary]', err));
+  // Housekeeping after the reply is out: it must not delay the end of the stream (and the last sentence).
+  waitUntil(maybeSummarize(db, conversationId, settings.provider).catch((err) => console.error('[summary]', err)));
 }
 
-async function applyResolutions(ctx: ToolContext, conversationId: string, resolutions: ActionResolution[], send: Send) {
+const confirmation = (tool: string, input: unknown) => getTool(tool)?.confirm?.(input) ?? null;
+
+/** Speaks and records the actions' own confirmations as JARVIS's reply. */
+async function sayConfirmation(db: SupabaseClient, conversationId: string, lines: string[], messages: AIMessage[], send: Send) {
+  const reply: AIMessage = { role: 'assistant', content: lines.join(' ') };
+  send({ type: 'text', delta: reply.content! });
+  messages.push(reply);
+  await insertMessages(db, conversationId, [reply]);
+}
+
+interface ResolvedAction { tool: string; input: Record<string, unknown>; status: ExecutionStatus; needsApproval: boolean }
+
+async function applyResolutions(ctx: ToolContext, conversationId: string, resolutions: ActionResolution[], send: Send): Promise<ResolvedAction[]> {
   const { db } = ctx;
+  const resolved: ResolvedAction[] = [];
   for (const r of resolutions) {
     const { data } = await db
       .from('tool_executions')
@@ -225,7 +268,9 @@ async function applyResolutions(ctx: ToolContext, conversationId: string, resolu
     if (outcome !== 'reject')
       await logActivity(db, { actor: 'jarvis', action: ex.summary, tool: ex.tool, status, approved: ex.needs_approval ? true : null, input: ex.input, result: output });
     send({ type: 'tool', execution: { id: ex.id, tool: ex.tool, summary: ex.summary, status, output: truncate(output, 2000) } });
+    resolved.push({ tool: ex.tool, input: ex.input, status, needsApproval: ex.needs_approval });
   }
+  return resolved;
 }
 
 /** Any action the user never answered is cancelled, so the model always sees a result for every tool call. */
@@ -238,4 +283,5 @@ async function cancelUnresolved(db: SupabaseClient, conversationId: string) {
     .select('tool, tool_call_id');
   if (data?.length)
     await insertMessages(db, conversationId, data.map((d) => toolMessage({ id: d.tool_call_id, name: d.tool }, 'Cancelled: the user moved on without approving.')));
+  return data?.length ?? 0;
 }

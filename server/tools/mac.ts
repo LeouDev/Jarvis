@@ -5,6 +5,7 @@ import type { JarvisTool } from './types.js';
 // Executed by the browser through the local Mac agent, which re-validates everything itself.
 
 export const openApplication: JarvisTool<{ app: string }> = {
+  confirm: (i) => `${i.app} is open.`,
   name: 'openApplication', group: 'mac', permission: 'write', runOn: 'agent',
   description: 'Open a macOS application from the allowlist (e.g. "Visual Studio Code", "Safari", "Terminal").',
   schema: z.object({ app: z.string().min(1).max(80) }),
@@ -12,6 +13,7 @@ export const openApplication: JarvisTool<{ app: string }> = {
 };
 
 export const openWebsite: JarvisTool<{ url: string }> = {
+  confirm: (i) => `Opened ${(() => { try { return new URL(i.url).hostname.replace(/^www\./, ''); } catch { return 'it'; } })()}.`,
   name: 'openWebsite', group: 'mac', permission: 'write', runOn: 'agent',
   description: "Open a website in the user's default browser.",
   schema: z.object({ url: z.url({ protocol: /^https?$/ }) }),
@@ -68,6 +70,7 @@ const EDITORS = ['Visual Studio Code', 'Cursor', 'Xcode', 'Finder', 'Terminal'] 
 const localTime = z.string().min(8).max(40).describe('Local date-time without timezone, e.g. 2026-10-06T17:00');
 
 export const openProject: JarvisTool<{ path: string; app?: (typeof EDITORS)[number] }> = {
+  confirm: (i) => `${i.path.split('/').filter(Boolean).pop()} is open in ${i.app ?? 'VS Code'}.`,
   name: 'openProject', group: 'mac', permission: 'write', runOn: 'agent',
   description:
     "Open a project folder in an editor (VS Code by default), Finder or Terminal. Needs the folder's full path: use a remembered path (searchMemory) or find it with searchFiles first.",
@@ -76,6 +79,7 @@ export const openProject: JarvisTool<{ path: string; app?: (typeof EDITORS)[numb
 };
 
 export const mediaControl: JarvisTool<{ action: 'play' | 'pause' | 'toggle' | 'next' | 'previous' | 'status'; app?: 'Spotify' | 'Music' }> = {
+  confirm: (i) => ({ play: 'Playing.', pause: 'Paused.', toggle: 'Done.', next: 'Next track.', previous: 'Previous track.', status: null })[i.action],
   name: 'mediaControl', group: 'macApps', permission: 'write', runOn: 'agent',
   description: "Control music in Spotify or Apple Music: play, pause, toggle, next, previous, or status (what's playing). Without app, uses Spotify if it's open.",
   schema: z.object({ action: z.enum(['play', 'pause', 'toggle', 'next', 'previous', 'status']), app: z.enum(['Spotify', 'Music']).optional() }),
@@ -83,6 +87,7 @@ export const mediaControl: JarvisTool<{ action: 'play' | 'pause' | 'toggle' | 'n
 };
 
 export const setVolume: JarvisTool<{ level?: number; mute?: boolean }> = {
+  confirm: (i) => (i.level !== undefined ? `Volume ${i.level}.` : i.mute === true ? 'Muted.' : i.mute === false ? 'Unmuted.' : null),
   name: 'setVolume', group: 'macApps', permission: 'write', runOn: 'agent',
   description: "Set the Mac's output volume (0–100) and/or mute. Call with no arguments to read the current volume.",
   schema: z.object({ level: z.number().int().min(0).max(100).optional(), mute: z.boolean().optional() }),
@@ -90,6 +95,7 @@ export const setVolume: JarvisTool<{ level?: number; mute?: boolean }> = {
 };
 
 export const createReminder: JarvisTool<{ title: string; due?: string }> = {
+  confirm: () => 'Reminder set.',
   name: 'createReminder', group: 'macApps', permission: 'write', runOn: 'agent',
   description: "Create a macOS Reminder that alerts the user at the due time. Use this for 'remind me…'.",
   schema: z.object({ title: z.string().min(1).max(300), due: localTime.optional() }),
@@ -97,6 +103,7 @@ export const createReminder: JarvisTool<{ title: string; due?: string }> = {
 };
 
 export const createNote: JarvisTool<{ title: string; body: string }> = {
+  confirm: () => 'Note saved.',
   name: 'createNote', group: 'macApps', permission: 'write', runOn: 'agent',
   description: 'Create a note in Apple Notes.',
   schema: z.object({ title: z.string().min(1).max(200), body: z.string().max(20_000) }),
@@ -104,6 +111,7 @@ export const createNote: JarvisTool<{ title: string; body: string }> = {
 };
 
 export const createCalendarEvent: JarvisTool<{ title: string; start: string; durationMinutes?: number }> = {
+  confirm: () => 'Added to your calendar.',
   name: 'createCalendarEvent', group: 'macApps', permission: 'write', runOn: 'agent',
   description: 'Add an event to the macOS Calendar (first writable calendar).',
   schema: z.object({ title: z.string().min(1).max(300), start: localTime, durationMinutes: z.number().int().min(5).max(1440).optional() }),
@@ -120,6 +128,7 @@ export const lookAtScreen: JarvisTool<{ question: string }> = {
 };
 
 export const clipboard: JarvisTool<{ action: 'read' | 'write'; text?: string }> = {
+  confirm: (i) => (i.action === 'write' ? 'Copied to your clipboard.' : null),
   untrustedOutput: true,
   name: 'clipboard', group: 'macApps', permission: 'write', runOn: 'agent',
   description: "Read the Mac clipboard text, or copy text to it. Won't read passwords or keys.",

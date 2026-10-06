@@ -24,6 +24,7 @@ export const searchMemory: JarvisTool<{ query: string }> = {
 };
 
 export const saveMemory: JarvisTool<{ content: string; category: (typeof MEMORY_CATEGORIES)[number]; importance: number }> = {
+  confirm: () => 'Noted.',
   name: 'saveMemory', group: 'memory', permission: 'write', runOn: 'server',
   description:
     'Save a fact to long-term memory. Use ONLY when the user explicitly asks you to remember something. Never store passwords, keys, tokens or credentials. Write the fact in third person, e.g. "Leou is building a project called JARVIS."',
@@ -40,6 +41,7 @@ export const saveMemory: JarvisTool<{ content: string; category: (typeof MEMORY_
 };
 
 export const deleteMemory: JarvisTool<{ id: string }> = {
+  confirm: () => 'Forgotten.',
   name: 'deleteMemory', group: 'memory', permission: 'write', runOn: 'server',
   description: 'Delete a memory by id when the user asks you to forget something. Search first to find the id.',
   schema: z.object({ id: z.uuid() }),
@@ -51,6 +53,7 @@ export const deleteMemory: JarvisTool<{ id: string }> = {
 };
 
 export const createTask: JarvisTool<{ title: string; notes?: string; due?: string }> = {
+  confirm: () => 'Added to your tasks.',
   name: 'createTask', group: 'tasks', permission: 'write', runOn: 'server',
   description: "Add an item to JARVIS's own to-do list (no alerts). For 'remind me…' prefer createReminder, which alerts on the Mac.",
   schema: z.object({
@@ -80,6 +83,7 @@ export const listTasks: JarvisTool<{ status: 'open' | 'done' | 'all' }> = {
 };
 
 export const completeTask: JarvisTool<{ id: string }> = {
+  confirm: () => 'Marked as done.',
   name: 'completeTask', group: 'tasks', permission: 'write', runOn: 'server',
   description: 'Mark a task as done.',
   schema: z.object({ id: z.uuid() }),
@@ -91,6 +95,7 @@ export const completeTask: JarvisTool<{ id: string }> = {
 };
 
 export const saveProject: JarvisTool<{ name: string; path?: string; website?: string; repo?: string; description?: string; aliases?: string[] }> = {
+  confirm: (i) => `Saved ${i.name}.`,
   name: 'saveProject', group: 'memory', permission: 'write', runOn: 'server',
   description:
     "Create or update one of the user's projects: folder path, website, GitHub repo (owner/name), short description, aliases. Use when the user tells you where a project lives or its site/repo; prefer this over saveMemory for project details. Only pass fields you were told.",

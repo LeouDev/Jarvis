@@ -3,7 +3,7 @@ import type { ActionResolution, ChatRequest, PendingAction, Settings, ToolExecut
 import { runAgentTool } from '../lib/agent';
 import { streamChat } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import { chime, NoSpeechError, stripWake, voice } from '../lib/voice';
+import { chime, isStopPhrase, NoSpeechError, stripWake, UnclearSpeechError, voice } from '../lib/voice';
 import { watchForBargeIn, whisperVoice } from '../lib/whisper';
 import { TURN_PAUSE_MS } from '../lib/vad';
 import { createSpeaker, sentenceChunker, type Speaker } from '../lib/speech';
@@ -166,26 +166,40 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
     await run({ conversationId: convRef.current ?? undefined, message });
   };
 
+  const unclearRetries = useRef(0);
+
   /** Records one utterance and sends it. `quiet` = silence just ends listening (follow-ups, wake word). */
-  const capture = async (quiet: boolean) => {
+  const capture = async (quiet: boolean, hint = ''): Promise<void> => {
     stopSpeaking();
-    setError('');
+    setError(hint);
     setInterim('');
     setState('listening');
     try {
       const v = settingsRef.current.voice;
       const heard = await sttRef.current.listen({ onInterim: setInterim, lang: v.lang, pauseMs: TURN_PAUSE_MS[v.turnPause], onEnd: () => setState('processing') });
       setInterim('');
+      setError('');
       const command = stripWake(heard); // "Jarvis, open VS Code" → "open VS Code"
       if (heard && !command) {
         chime(); // only the name was said: keep listening for the instruction
         return capture(true);
       }
+      if (isStopPhrase(command)) {
+        voiceTurn.current = false; // "thanks" / "never mind" ends the conversation without a model call
+        return setState('idle');
+      }
+      unclearRetries.current = 0;
       if (command) return send(command, true);
       setState('idle');
       if (!quiet) setError("I didn't hear anything. Check that this site may use your microphone (voice works in Chrome and Safari), or type instead.");
     } catch (err) {
       setInterim('');
+      // Probably mis-heard: ask again instead of acting on the wrong words (twice at most).
+      if (err instanceof UnclearSpeechError && unclearRetries.current < 2) {
+        unclearRetries.current++;
+        return capture(true, err.message);
+      }
+      unclearRetries.current = 0;
       setState('idle');
       if (!(quiet && err instanceof NoSpeechError)) setError((err as Error).message);
     }
@@ -220,8 +234,8 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
       },
       onCommand: (text) => {
         const command = stripWake(text);
-        if (command) void latest.current.send(command, true);
-        else setState((s) => (s === 'listening' ? 'idle' : s));
+        if (command && !isStopPhrase(command)) void latest.current.send(command, true);
+        else setState((s) => (s === 'listening' ? 'idle' : s)); // "stop": JARVIS already went quiet
       },
     });
   }, [bargeIn, state, stopSpeaking]);
@@ -244,12 +258,15 @@ export function useJarvis(settings: Settings, onTurnComplete: () => void, whispe
     if (!wakeWord || state !== 'idle' || approval) return;
     return stt.listenForWakeWord({
       lang,
+      pauseMs: TURN_PAUSE_MS[settingsRef.current.voice.turnPause],
       onArmed: chime,
       onHeard: showHeard,
       onWake: (command) => {
         setHeard('');
+        if (isStopPhrase(command)) return stopSpeaking();
         if (command) void latest.current.send(command, true); // name alone + silence: just keep waiting
       },
+      onUnclear: () => setError("Didn't catch that clearly — say “Jarvis” and try again."),
       onError: setError,
     });
   }, [wakeWord, state, approval, lang, showHeard, stt]);

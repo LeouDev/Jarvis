@@ -34,8 +34,8 @@ export async function* streamChat(body: ChatRequest): AsyncGenerator<ChatEvent> 
   if (buffer.trim()) yield JSON.parse(buffer) as ChatEvent;
 }
 
-/** Sends recorded speech to the server's Whisper endpoint. */
-export async function transcribeAudio(audio: Blob, lang?: string): Promise<string> {
+/** Sends recorded speech to the server's Whisper endpoint. `unclear`: probably mis-heard, ask again. */
+export async function transcribeAudio(audio: Blob, lang?: string): Promise<{ text: string; unclear: boolean }> {
   const { authorization } = await authHeaders();
   const res = await fetch(`/api/transcribe${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`, {
     method: 'POST',
@@ -44,5 +44,5 @@ export async function transcribeAudio(audio: Blob, lang?: string): Promise<strin
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error ?? 'Transcription failed.');
-  return String(json.text ?? '');
+  return { text: String(json.text ?? ''), unclear: Boolean(json.unclear) };
 }

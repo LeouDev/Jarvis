@@ -95,3 +95,15 @@ describe('intent guard', () => {
     expect(planToolCall(post, DEFAULT_SETTINGS, false, 'Create a Facebook post for 13C')).toMatchObject({ kind: 'pending', needsApproval: true });
   });
 });
+
+describe('self-confirming actions (no second model call)', () => {
+  it('plain actions have a short spoken confirmation; lookups and approvals do not', () => {
+    expect(getTool('openApplication')!.confirm!({ app: 'Visual Studio Code' })).toBe('Visual Studio Code is open.');
+    expect(getTool('mediaControl')!.confirm!({ action: 'pause' })).toBe('Paused.');
+    expect(getTool('mediaControl')!.confirm!({ action: 'status' })).toBeNull(); // needs the model to read the result
+    expect(getTool('setVolume')!.confirm!({ level: 30 })).toBe('Volume 30.');
+    expect(getTool('setVolume')!.confirm!({})).toBeNull();
+    expect(getTool('openWebsite')!.confirm!({ url: 'https://www.13c.online/' })).toBe('Opened 13c.online.');
+    for (const t of ['webSearch', 'searchMemory', 'runTerminal', 'social_publish', 'lookAtScreen', 'readFile']) expect(getTool(t)!.confirm).toBeUndefined();
+  });
+});

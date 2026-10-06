@@ -20,7 +20,7 @@ const micError = (err: unknown) => {
   );
 };
 
-let session: { onStart?: () => void; onEnd?: (audio: Float32Array) => void } = {};
+let session: { onStart?: () => void; onRealStart?: () => void; onEnd?: (audio: Float32Array) => void } = {};
 let vadPromise: Promise<MicVAD> | null = null;
 let active: { finish: (audio: Float32Array | null) => void } | null = null;
 
@@ -38,6 +38,7 @@ function loadVAD(): Promise<MicVAD> {
         getStream: () =>
           navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }),
         onSpeechStart: () => session.onStart?.(),
+        onSpeechRealStart: () => session.onRealStart?.(), // longer than minSpeechMs: real speech, not a click
         onSpeechEnd: (audio) => session.onEnd?.(audio),
         onFrameProcessed: (p) => void (micLevel.value = p.isSpeech),
       }),
@@ -59,7 +60,8 @@ export async function captureUtterance(o: {
   noSpeechMs?: number;
   maxMs?: number;
   strict?: boolean;
-  onSpeechStart?: () => void;
+  /** Fires once the sound has lasted minSpeechMs, i.e. it is speech and not a cough or click. */
+  onSpeech?: () => void;
   /** Ends this capture only — never one that started after it. */
   signal?: AbortSignal;
 }) {
@@ -69,7 +71,7 @@ export async function captureUtterance(o: {
     redemptionMs: o.pauseMs,
     positiveSpeechThreshold: o.strict ? 0.8 : 0.5,
     negativeSpeechThreshold: o.strict ? 0.6 : 0.35,
-    minSpeechMs: o.strict ? 400 : 250,
+    minSpeechMs: o.strict ? 300 : 250, // strict still catches a short "stop" (~350 ms), not a cough
   });
   return new Promise<Float32Array | null>((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -89,8 +91,8 @@ export async function captureUtterance(o: {
       onStart: () => {
         clearTimeout(timer);
         timer = setTimeout(() => void stopCapture(), o.maxMs ?? 30_000); // cap very long monologues
-        o.onSpeechStart?.();
       },
+      onRealStart: () => o.onSpeech?.(),
       onEnd: (audio) => me.finish(audio),
     };
     if (o.noSpeechMs !== undefined) timer = setTimeout(() => me.finish(null), o.noSpeechMs);

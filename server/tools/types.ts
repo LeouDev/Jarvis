@@ -26,6 +26,8 @@ export interface JarvisTool<T = any> {
   untrustedOutput?: boolean;
   /** The user's own words must match this for the tool to run (stops the model inferring intent from noise). */
   requiresIntent?: RegExp;
+  /** Short spoken confirmation once a plain action succeeds ("Paused."). Lets JARVIS skip a second model call; null = needs one. */
+  confirm?(input: T): string | null;
   execute?(input: T, ctx: ToolContext): Promise<ToolResult>;
 }
 

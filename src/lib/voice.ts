@@ -21,8 +21,12 @@ export interface WakeOptions {
   onArmed?: () => void;
   /** Live transcript of what the mic is hearing, for feedback. */
   onHeard?: (text: string) => void;
+  /** The command after the name was probably mis-heard. */
+  onUnclear?: () => void;
   onError?: (message: string) => void;
   lang?: string;
+  /** Silence that ends the command after the name. */
+  pauseMs?: number;
 }
 
 type Recognition = {
@@ -70,6 +74,16 @@ export class NoSpeechError extends Error {
     super("I couldn't hear any speech. Check which microphone the browser uses (click the icon left of the address bar → Microphone, or your OS sound input) and that your headset isn't muted.");
   }
 }
+
+export class UnclearSpeechError extends Error {
+  constructor() {
+    super("Didn't catch that clearly — say it again.");
+  }
+}
+
+/** "Stop", "never mind", "thanks"… — ends the exchange without asking the model anything. */
+export const isStopPhrase = (text: string) =>
+  /^(?:(?:ok(?:ay)?|no|hey)[\s,]+)?(?:stop|cancel|never ?mind|shut up|be quiet|quiet|enough|that'?s (?:enough|all|it)|thanks?|thank you)(?:[\s,]+(?:jarvis|thanks|thank you))?[.!]*$/i.test(text.trim());
 
 /** Short rising tone confirming the wake word was heard. */
 export function chime() {
@@ -156,7 +170,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
     this.recognition?.stop();
   }
 
-  listenForWakeWord({ onWake, onArmed, onHeard, onError, lang }: WakeOptions) {
+  listenForWakeWord({ onWake, onArmed, onHeard, onError, lang, pauseMs = PAUSE_MS }: WakeOptions) {
     if (!RecognitionCtor) {
       onError?.('Wake word needs speech recognition (Chrome or Safari).');
       return () => {};
@@ -185,7 +199,7 @@ export class BrowserVoiceProvider implements VoiceProvider {
         if (wakeAt < 0 || ending) return;
         const quiet = Date.now() - lastHeard;
         // Short pause ends the command; a longer one is allowed right after the name ("Jarvis… open VS Code").
-        if (quiet > (parts.size && [...parts.values()].some(Boolean) ? PAUSE_MS : NO_SPEECH_MS)) finish();
+        if (quiet > (parts.size && [...parts.values()].some(Boolean) ? pauseMs : NO_SPEECH_MS)) finish();
       }, 200);
       r.lang = lang || navigator.language || 'en-US';
       r.continuous = true;

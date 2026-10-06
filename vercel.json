@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "regions": [
+    "sin1"
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",

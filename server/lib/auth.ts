@@ -9,6 +9,17 @@ export function isAllowedEmail(email: string | undefined, allowList = process.en
   return !allowed.length || allowed.includes((email ?? '').toLowerCase());
 }
 
+// token → user, until the token expires (max 5 min). Saves an auth round trip on every request
+// (chat, speech, transcription) when the function instance is reused.
+const verified = new Map<string, { user: User; until: number }>();
+const tokenExpiry = (token: string) => {
+  try {
+    return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).exp * 1000;
+  } catch {
+    return 0;
+  }
+};
+
 /**
  * Verifies the Supabase access token and gives the route a client that acts *as the user*,
  * so Row Level Security applies to every query. The service-role key is never used.
@@ -23,10 +34,16 @@ export const requireUser = createMiddleware<Env>(async (c, next) => {
     global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await db.auth.getUser(token);
-  if (error || !data.user) return c.json({ error: 'Your session has expired. Please sign in again.' }, 401);
-  if (!isAllowedEmail(data.user.email)) return c.json({ error: 'This JARVIS is private to its owner.' }, 403);
+  let user = (verified.get(token)?.until ?? 0) > Date.now() ? verified.get(token)!.user : null;
+  if (!user) {
+    const { data, error } = await db.auth.getUser(token);
+    if (error || !data.user) return c.json({ error: 'Your session has expired. Please sign in again.' }, 401);
+    user = data.user;
+    if (verified.size > 500) verified.clear();
+    verified.set(token, { user, until: Math.min(tokenExpiry(token), Date.now() + 5 * 60_000) });
+  }
+  if (!isAllowedEmail(user.email)) return c.json({ error: 'This JARVIS is private to its owner.' }, 403);
   c.set('db', db);
-  c.set('user', data.user);
+  c.set('user', user);
   await next();
 });

@@ -44,6 +44,17 @@ app.get('/tools', (c) =>
 
 app.post('/chat', chatRoute);
 
+// Whisper's spelling hints change rarely; rebuild them at most every 5 minutes per user.
+const vocabCache = new Map<string, { value: string; until: number }>();
+async function cachedVocabulary(db: Env['Variables']['db'], userId: string) {
+  const hit = vocabCache.get(userId);
+  if (hit && hit.until > Date.now()) return hit.value;
+  const { data: profile } = await db.from('users').select('display_name').maybeSingle();
+  const value = await vocabulary(db, profile?.display_name ?? '');
+  vocabCache.set(userId, { value, until: Date.now() + 5 * 60_000 });
+  return value;
+}
+
 const SpeakBody = z.object({ text: z.string().trim().min(1).max(200), voice: z.string().regex(/^[a-z]{2,20}$/).default('troy') });
 
 // One sentence in, WAV out. 409/429 tell the browser to fall back to its built-in voice.
@@ -65,13 +76,12 @@ app.post('/transcribe', async (c) => {
   if (!type.startsWith('audio/')) return c.json({ error: 'Send an audio recording.' }, 415);
   const audio = await c.req.arrayBuffer();
   if (audio.byteLength > 4_000_000) return c.json({ error: 'That recording is too long.' }, 413);
-  if (audio.byteLength < 4_000) return c.json({ text: '' });
-  const { data: profile } = await c.var.db.from('users').select('display_name').maybeSingle();
-  const text = await transcribe(new Blob([audio], { type }), {
+  if (audio.byteLength < 4_000) return c.json({ text: '', unclear: false });
+  const result = await transcribe(new Blob([audio], { type }), {
     language: whisperLanguage(c.req.query('lang') ?? ''),
-    prompt: await vocabulary(c.var.db, profile?.display_name ?? ''),
+    prompt: await cachedVocabulary(c.var.db, c.var.user.id),
   });
-  return c.json({ text });
+  return c.json(result);
 });
 
 const MemoryBody = z.object({

@@ -28,9 +28,9 @@ describe('Whisper transcription', () => {
 
   it('sends model, vocabulary prompt and language to Groq', async () => {
     process.env.GROQ_API_KEY = 'test';
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ text: ' Open 13C in VS Code. ' }));
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ text: ' Open 13C in VS Code. ', segments: [{ avg_logprob: -0.3 }] }));
     vi.stubGlobal('fetch', fetchMock);
-    expect(await transcribe(audio, { prompt: 'Jarvis, Leou. 13C', language: 'en' })).toBe('Open 13C in VS Code.');
+    expect(await transcribe(audio, { prompt: 'Jarvis, Leou. 13C', language: 'en' })).toEqual({ text: 'Open 13C in VS Code.', unclear: false });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
     const form = init.body as FormData;
@@ -40,7 +40,7 @@ describe('Whisper transcription', () => {
   it('drops Whisper silence hallucinations and explains failures', async () => {
     process.env.GROQ_API_KEY = 'test';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ text: 'Thank you.' })));
-    expect(await transcribe(audio)).toBe('');
+    expect((await transcribe(audio)).text).toBe('');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('slow down', { status: 429 })));
     await expect(transcribe(audio)).rejects.toThrow(/rate-limited/);
     delete process.env.GROQ_API_KEY;
@@ -75,12 +75,16 @@ describe('Whisper transcription', () => {
       .mockResolvedValueOnce(Response.json({ text: '60 days free, then 149 pesos. 60 days. 60 days. 60 days.' }))
       .mockResolvedValueOnce(Response.json({ text: "Hey Jarvis, let's go." }));
     vi.stubGlobal('fetch', fetchMock);
-    expect(await transcribe(audio, { prompt: 'Jarvis, Kassix', language: 'en' })).toBe("Hey Jarvis, let's go.");
+    expect((await transcribe(audio, { prompt: 'Jarvis, Kassix', language: 'en' })).text).toBe("Hey Jarvis, let's go.");
     expect((fetchMock.mock.calls[1][1].body as FormData).get('prompt')).toBeNull();
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ text: 'Kassix.' })).mockResolvedValueOnce(Response.json({ text: '.' })));
-    expect(await transcribe(audio, { prompt: 'Jarvis, Kassix' })).toBe(''); // noise: echo, then nothing
+    expect((await transcribe(audio, { prompt: 'Jarvis, Kassix' })).text).toBe(''); // noise: echo, then nothing
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ text: '1' })));
-    expect(await transcribe(audio, { prompt: 'Jarvis' })).toBe('');
+    expect((await transcribe(audio, { prompt: 'Jarvis' })).text).toBe('');
+
+    // Garbled audio (calibrated: clear speech ≈ -0.3…-0.6, noise-drowned ≈ -1.2) → ask to repeat.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ text: 'Open the cash at the project, VFO. RPE.', segments: [{ avg_logprob: -1.16 }] })));
+    expect(await transcribe(audio)).toEqual({ text: 'Open the cash at the project, VFO. RPE.', unclear: true });
   });
 });

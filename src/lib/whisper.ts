@@ -2,7 +2,7 @@
 // when you've finished, and the server transcribes with Whisper (Groq). The browser recognizer is
 // still used to spot the wake word cheaply; the command itself is re-transcribed from recorded audio.
 import { transcribeAudio } from './api';
-import { BrowserVoiceProvider, NoSpeechError, stripWake, type WakeOptions } from './voice';
+import { BrowserVoiceProvider, NoSpeechError, stripWake, UnclearSpeechError, type WakeOptions } from './voice';
 import { captureUtterance, micLevel, stopCapture, TURN_PAUSE_MS } from './vad';
 
 export { micLevel };
@@ -181,7 +181,8 @@ export class WhisperVoiceProvider extends BrowserVoiceProvider {
     const audio = await captureUtterance({ pauseMs: pauseMs ?? TURN_PAUSE_MS.normal, noSpeechMs: NO_SPEECH_MS, maxMs: MAX_MS });
     if (!audio || peak(audio) < MIN_PEAK) throw new NoSpeechError(); // don't let Whisper hallucinate on silence
     onEnd?.();
-    const text = await transcribeAudio(encodeWav(audio), lang);
+    const { text, unclear } = await transcribeAudio(encodeWav(audio), lang);
+    if (unclear) throw new UnclearSpeechError();
     if (!text) throw new NoSpeechError();
     return text;
   }
@@ -192,9 +193,10 @@ export class WhisperVoiceProvider extends BrowserVoiceProvider {
 
   /** Barge-in: while JARVIS talks, a clear voice interrupts it; returns what you said. */
   async listenForInterruption({ lang, pauseMs, onInterrupt, signal }: { lang?: string; pauseMs?: number; onInterrupt: () => void; signal?: AbortSignal }) {
-    const audio = await captureUtterance({ pauseMs: pauseMs ?? TURN_PAUSE_MS.normal, strict: true, maxMs: MAX_MS, onSpeechStart: onInterrupt, signal });
+    const audio = await captureUtterance({ pauseMs: pauseMs ?? TURN_PAUSE_MS.normal, strict: true, maxMs: MAX_MS, onSpeech: onInterrupt, signal });
     if (!audio || peak(audio) < MIN_PEAK) return '';
-    return transcribeAudio(encodeWav(audio), lang).catch(() => '');
+    const heard = await transcribeAudio(encodeWav(audio), lang).catch(() => ({ text: '', unclear: false }));
+    return heard.unclear ? '' : heard.text;
   }
 
   /** Browser recognizer spots "Jarvis"; Whisper re-transcribes that whole utterance from the recorded audio. */
@@ -215,7 +217,7 @@ export class WhisperVoiceProvider extends BrowserVoiceProvider {
         const audio = release && utteranceStart >= 0 ? mic.slice(utteranceStart, mic.total) : null;
         if (!audio || audio.length < RATE / 2 || peak(audio) < MIN_PEAK) return opts.onWake(command);
         transcribeAudio(encodeWav(audio), opts.lang)
-          .then((text) => opts.onWake(stripWake(text) || command))
+          .then(({ text, unclear }) => (unclear ? opts.onUnclear?.() : opts.onWake(stripWake(text) || command)))
           .catch(() => opts.onWake(command));
       },
     });

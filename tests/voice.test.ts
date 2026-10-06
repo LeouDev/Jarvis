@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findWake, speakable, stripWake, WAKE } from '../src/lib/voice';
+import { findWake, isStopPhrase, speakable, stripWake, WAKE } from '../src/lib/voice';
 
 const command = (heard: string) => heard.match(WAKE)?.[2].trim() ?? null;
 
@@ -39,5 +39,15 @@ describe('captured commands', () => {
 describe('speech text', () => {
   it('strips markdown and links before speaking', () => {
     expect(speakable('**Done.** See [the docs](https://x.dev) or https://y.dev')).toBe('Done. See the docs or link');
+  });
+});
+
+describe('stop phrases', () => {
+  it('end the exchange without a model call', () => {
+    for (const t of ['stop', 'Stop.', 'okay stop', 'never mind', 'nevermind', 'cancel', "that's all", 'thanks', 'thank you Jarvis', 'no, stop!'])
+      expect(isStopPhrase(t)).toBe(true);
+  });
+  it('do not swallow real requests', () => {
+    for (const t of ['stop the music', 'cancel my 3pm meeting', 'thanks, now open VS Code', 'open VS Code']) expect(isStopPhrase(t)).toBe(false);
   });
 });

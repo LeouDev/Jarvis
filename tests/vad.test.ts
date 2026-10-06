@@ -25,6 +25,7 @@ describe('voice capture sessions', () => {
     // The user speaks their next request: it must still be captured.
     const speech = new Float32Array([0.1, -0.2, 0.3]);
     callbacks.onSpeechStart();
+    callbacks.onSpeechRealStart();
     callbacks.onSpeechEnd(speech);
     expect(await followUp).toBe(speech);
   });

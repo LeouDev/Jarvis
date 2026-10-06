@@ -8,14 +8,14 @@ import { listProjects } from '../memory/projects.js';
 // Whisper invents these on near-silent audio.
 const HALLUCINATIONS = /^(thank you\.?|thanks for watching!?|thank you for watching\.?|you|bye\.?|\.+|okay\.?)$/i;
 
-async function whisper(audio: Blob, prompt: string, language?: string): Promise<string> {
+async function whisper(audio: Blob, prompt: string, language?: string): Promise<{ text: string; confidence: number }> {
   const key = process.env.GROQ_API_KEY;
   if (!key) throw new UserFacingError('Whisper transcription needs GROQ_API_KEY on the server. Switch Settings → Voice → Speech engine to Browser.');
   const form = new FormData();
   form.append('file', audio, audio.type.includes('wav') ? 'speech.wav' : 'speech.webm');
   form.append('model', process.env.GROQ_STT_MODEL || 'whisper-large-v3-turbo');
   form.append('temperature', '0');
-  form.append('response_format', 'json');
+  form.append('response_format', 'verbose_json'); // per-segment confidence
   if (prompt) form.append('prompt', prompt);
   if (language) form.append('language', language);
   const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
@@ -29,8 +29,14 @@ async function whisper(audio: Blob, prompt: string, language?: string): Promise<
     console.error('[stt]', res.status, (await res.text()).slice(0, 300));
     throw new UserFacingError("I couldn't transcribe that audio.");
   }
-  return String((await res.json()).text ?? '').trim();
+  const json = await res.json();
+  // Lowest per-segment average log-probability: clear speech ≈ -0.3…-0.6, garbled audio < -1.
+  const confidence = Math.min(0, ...((json.segments ?? []) as { avg_logprob: number }[]).map((seg) => seg.avg_logprob));
+  return { text: String(json.text ?? '').trim(), confidence };
 }
+
+/** Below this, the words are probably wrong: ask the user to repeat instead of acting on them. */
+const UNCLEAR_BELOW = -0.8;
 
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+(?:[./][a-z0-9]+)*/g) ?? [];
 
@@ -49,12 +55,14 @@ export const isLooping = (text: string) => {
   return [...counts.values()].some((n) => n >= 3);
 };
 
-export async function transcribe(audio: Blob, opts: { prompt?: string; language?: string } = {}): Promise<string> {
-  let text = await whisper(audio, opts.prompt ?? '', opts.language);
+export async function transcribe(audio: Blob, opts: { prompt?: string; language?: string } = {}): Promise<{ text: string; unclear: boolean }> {
+  let result = await whisper(audio, opts.prompt ?? '', opts.language);
   // Unclear audio + a hint can make Whisper echo the hint; without it, noise transcribes as nothing.
-  if (opts.prompt && (looksLikeBleed(text, opts.prompt) || isLooping(text))) text = await whisper(audio, '', opts.language);
+  if (opts.prompt && (looksLikeBleed(result.text, opts.prompt) || isLooping(result.text))) result = await whisper(audio, '', opts.language);
+  const { text, confidence } = result;
   // Fewer than two letters ("1", ".", "S.") is noise, not a command.
-  return HALLUCINATIONS.test(text) || isLooping(text) || (text.match(/\p{L}/gu)?.length ?? 0) < 2 ? '' : text;
+  if (HALLUCINATIONS.test(text) || isLooping(text) || (text.match(/\p{L}/gu)?.length ?? 0) < 2) return { text: '', unclear: false };
+  return { text, unclear: confidence < UNCLEAR_BELOW };
 }
 
 const BASE_TERMS = ['Jarvis', 'VS Code', 'GitHub', 'Facebook', 'Spotify', 'Vercel', 'Supabase'];
