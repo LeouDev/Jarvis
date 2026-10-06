@@ -40,23 +40,23 @@ const model = () => {
   return { modelName: process.env.JARVIS_BROWSER_MODEL || 'google/gemini-3.5-flash-lite', apiKey };
 };
 
-/** Chrome main processes using JARVIS's profile. JARVIS launches its own with --remote-debugging-port. */
-async function profileChromes() {
+/** Chrome main processes using JARVIS's profile. */
+async function profileChromes(): Promise<number[]> {
   const { stdout } = await promisify(execFile)('ps', ['-axo', 'pid=,command=']);
   return stdout
     .split('\n')
     .filter((l) => l.includes(`--user-data-dir=${PROFILE}`) && !l.includes('--type='))
-    .map((l) => ({ pid: Number(l.trim().split(' ')[0]), launchedByJarvis: l.includes('--remote-debugging-port') }));
+    .map((l) => Number(l.trim().split(' ')[0]));
 }
 
-/** Two Chromes on one profile corrupt it ("Something went wrong when opening your profile"). */
-async function claimProfile() {
-  const running = await profileChromes();
-  if (running.some((p) => !p.launchedByJarvis))
-    throw new AgentError(409, "JARVIS's browser is open in another Chrome window. Quit that window (Cmd+Q), then ask again.");
-  // Left over from an agent that stopped while its browser was open.
-  for (const p of running) process.kill(p.pid, 'SIGTERM');
+/**
+ * Quits every Chrome on JARVIS's profile, the way Cmd+Q does: on SIGTERM Chrome saves its cookies, while
+ * Stagehand's close kills it and loses recent sign-ins. The user's everyday Chrome uses another profile and is never touched.
+ */
+async function quitProfileChromes(): Promise<boolean> {
+  for (const pid of await profileChromes()) process.kill(pid, 'SIGTERM');
   for (let i = 0; i < 50 && (await profileChromes()).length; i++) await new Promise((r) => setTimeout(r, 100));
+  return (await profileChromes()).length === 0;
 }
 
 async function browser(headless: boolean): Promise<StagehandType> {
@@ -66,13 +66,20 @@ async function browser(headless: boolean): Promise<StagehandType> {
   starting ??= (async () => {
     if (!existsSync(CHROME)) throw new AgentError(404, 'Google Chrome is needed for web browsing and was not found in /Applications.');
     mkdirSync(PROFILE, { recursive: true });
-    await claimProfile();
+    // Two Chromes on one profile break it ("Something went wrong when opening your profile"), so a sign-in
+    // window, or one left by an earlier agent run, is quit first.
+    if (!(await quitProfileChromes())) throw new AgentError(409, "JARVIS's browser window didn't close. Quit it (Cmd+Q), then ask again.");
     // No Chrome holds the profile now, so a lock left by a crashed run is stale and would make the launch abort.
     // chrome-launcher appends to chrome-err.log and reads the first DevTools port in it, so an old log points at a dead port.
     for (const f of ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'chrome-err.log', 'chrome-out.log'])
       rmSync(join(PROFILE, f), { force: true });
     const { Stagehand } = await import('@browserbasehq/stagehand');
-    const s = new Stagehand({ env: 'LOCAL', verbose: 0, disablePino: true, model: model(), localBrowserLaunchOptions: { headless, executablePath: CHROME, userDataDir: PROFILE } });
+    const s = new Stagehand({ env: 'LOCAL', verbose: 0, disablePino: true, model: model(), localBrowserLaunchOptions: {
+        headless, executablePath: CHROME, userDataDir: PROFILE,
+        // Use the real macOS Keychain like a normal Chrome window, so sites signed in by hand stay signed in here.
+        ignoreDefaultArgs: ['--use-mock-keychain', '--password-store=basic'],
+      },
+    });
     await s.init();
     return (stagehand = s);
   })().finally(() => (starting = null));
@@ -82,7 +89,9 @@ async function browser(headless: boolean): Promise<StagehandType> {
 export async function closeBrowser() {
   const s = stagehand;
   stagehand = null;
-  await s?.close().catch(() => {});
+  if (!s) return;
+  await quitProfileChromes();
+  await s.close().catch(() => {});
 }
 
 const lostBrowser = (err: unknown) => /ECONNREFUSED|ECONNRESET|Target closed|Session closed|browser has disconnected|WebSocket/i.test(String((err as Error)?.message));

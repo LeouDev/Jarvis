@@ -197,7 +197,7 @@ All AppleScript is fixed in `local-agent/tools/mac-apps.ts`, and your words are 
 ### Web browsing
 
 "Check the status of my latest Vercel deployment" or "What does my Supabase usage page say?" runs in JARVIS's own Chrome, driven by [Stagehand](https://github.com/browserbase/stagehand) (MIT).
-- **Separate profile:** `~/.jarvis/browser`, not your everyday Chrome. Sign in to your sites once, yourself, then quit that window:
+- **Separate profile:** `~/.jarvis/browser`, not your everyday Chrome. Sign in to your sites once, yourself, in a window opened with the command below. When JARVIS needs the browser, it quits that window itself (sign-ins are kept); it never touches your everyday Chrome.
   ```bash
   open -na "Google Chrome" --args --user-data-dir="$HOME/.jarvis/browser"
   ```
