@@ -60,6 +60,7 @@ const VERB: Record<string, [string, string]> = {
   createReminder: ['Add this reminder?', 'Add'],
   createCalendarEvent: ['Add this event?', 'Add'],
   createNote: ['Create this note?', 'Create'],
+  browserTask: ['Let JARVIS use the browser?', 'Go'],
 };
 
 export function ApprovalDialog({ action, onDecide }: { action: PendingAction | null; onDecide: (approved: boolean) => void }) {

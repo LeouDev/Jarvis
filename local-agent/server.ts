@@ -3,6 +3,13 @@ import { serve } from '@hono/node-server';
 import { createAgentApp } from './app.js';
 import { CONFIG_FILE, loadConfig } from './config/index.js';
 
+// The browser skill's model key comes from the JARVIS .env on this Mac (it never leaves the machine).
+try {
+  process.loadEnvFile(new URL('../.env', import.meta.url));
+} catch {
+  /* no .env: browser tasks will explain that GEMINI_API_KEY is missing */
+}
+
 const cfg = loadConfig();
 
 // Loopback only: the agent is never reachable from the network.

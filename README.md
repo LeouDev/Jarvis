@@ -167,6 +167,8 @@ The agent:
 | `POST /file/write` | Creates a file. Never overwrites unless `overwrite: true`. |
 | `POST /file/search` | Spotlight (`mdfind`) search, limited to allowed directories. |
 | `POST /system/status` | CPU, memory, disk, and network latency. |
+| `POST /browser/read` | Opens a page in JARVIS's browser and answers a question about it. |
+| `POST /browser/act` | Runs a multi-step browser task. Refused without `confirmed: true`. |
 
 To start the agent at login, run `npm run agent` from a Login Item, or wrap it in a `launchd` plist.
 
@@ -191,6 +193,24 @@ All AppleScript is fixed in `local-agent/tools/mac-apps.ts`, and your words are 
 - Every request includes the project list, so "open 13C's site", "show Kassix commits" and "open Dicta in VS Code" go straight to the right place.
 - Project names, aliases and domains are also Whisper spelling hints.
 - Requires the `20261005020000_projects.sql` migration.
+
+### Web browsing
+
+"Check the status of my latest Vercel deployment" or "What does my Supabase usage page say?" runs in JARVIS's own Chrome, driven by [Stagehand](https://github.com/browserbase/stagehand) (MIT).
+- **Separate profile:** `~/.jarvis/browser`, not your everyday Chrome. Sign in to your sites once, yourself, then quit that window:
+  ```bash
+  open -na "Google Chrome" --args --user-data-dir="$HOME/.jarvis/browser"
+  ```
+- **Two tools:** `browserRead` (read one page, no approval) and `browserTask` (clicks and types, always asks first).
+- **Hard limits:** it never buys, pays, transfers money, enters passwords or codes, accepts terms, sends messages, posts, or deletes. Requests like that are refused before the browser opens, and the browser model is told the same. Page text is treated as untrusted data.
+- **Needs:** Google Chrome in `/Applications` and `GEMINI_API_KEY` in `.env` (the agent reads it). Optional: `JARVIS_BROWSER_MODEL` (default `google/gemini-3.5-flash-lite`), and `"browserHeadless": true` in the agent config (or `JARVIS_BROWSER_HEADLESS=1`) to hide the window.
+- The browser closes after 10 idle minutes. One task runs at a time, with at most 15 steps.
+
+### Memory
+
+- **Smart saving:** when you ask JARVIS to remember something, it compares the fact with similar memories first. It then updates the old one ("my DB is Supabase now" replaces "…Firebase"), skips a duplicate, or adds a new one.
+- **Suggestions:** after a reply, JARVIS may spot up to three lasting facts in what you said and list them under **Projects & memory → Suggested by JARVIS**. Nothing is saved until you press **Keep**. Turn this off in **Settings → Memory**.
+- Requires the `20261006010000_memory_suggestions.sql` migration. Without it, suggestions are skipped and everything else works.
 
 ### Voice output
 
@@ -218,7 +238,7 @@ The wake word is always spotted by the browser recognizer. In Whisper mode, the 
   - `read`: runs immediately.
   - `write`: runs immediately unless Settings requires approval (files are on by default).
   - `dangerous`: always asks. Publishing social posts can never skip approval.
-- **Prompt injection:** some tools return outside content (web search, files, command output, screen, clipboard, GitHub). After one of them runs, any action in the same turn that changes something needs your approval, and the dialog says why. The system prompt also tells the model that tool output is data, never instructions.
+- **Prompt injection:** some tools return outside content (web search, browser pages, files, command output, screen, clipboard, GitHub). After one of them runs, any action in the same turn that changes something needs your approval, and the dialog says why. The system prompt also tells the model that tool output is data, never instructions.
 - **Headers:** a strict Content-Security-Policy (only same-origin, Supabase and the local agent), `nosniff`, a referrer policy and a permissions policy are set in `vercel.json`.
 - **Untrusted tool calls:** every model tool call is schema-validated (zod) before anything runs. Unknown tools and bad parameters are rejected.
 - **Terminal pipeline:** model → tool call → `classifyCommand` → permission check → approval dialog → agent re-validates → `execFile`. The agent never trusts the server's classification.
@@ -226,7 +246,7 @@ The wake word is always spotted by the browser recognizer. In Whisper mode, the 
   - **Safe** (can skip approval if you allow it): read-only commands such as `pwd`, `ls`, `git status`, `git log`.
   - **Everything else:** needs approval, and the agent refuses it without `confirmed: true`.
 - **Files:** paths are resolved through `realpath` (symlinks can't escape) and must sit inside the allowed directories. Credential files are refused even inside them. Existence is only revealed for allowed paths.
-- **Memory:** saved only when you ask. Credentials are refused twice, by the TypeScript filter and by a Postgres trigger.
+- **Memory:** saved only when you ask, or when you keep a suggestion. Suggestions are never used in answers until kept. Credentials are refused twice, by the TypeScript filter and by a Postgres trigger.
 - **Logging:** inputs are redacted (secret-looking keys and values) and results truncated.
 - **Known limit:** the agent token lives in browser `localStorage`, so an XSS on the JARVIS origin could reach the agent. The UI renders no raw HTML. Keep `allowedOrigins` tight.
 

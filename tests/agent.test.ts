@@ -8,7 +8,7 @@ const dir = realpathSync(mkdtempSync(join(tmpdir(), 'jarvis-agent-')));
 writeFileSync(join(dir, 'notes.txt'), 'hello');
 writeFileSync(join(dir, '.env'), 'SECRET=1');
 const token = 'test-token-not-a-secret';
-const app = createAgentApp({ port: 0, token, allowedDirectories: [dir], allowedApps: ['Calculator'], allowedOrigins: ['http://localhost:5173'] });
+const app = createAgentApp({ port: 0, token, allowedDirectories: [dir], allowedApps: ['Calculator'], allowedOrigins: ['http://localhost:5173'], browserHeadless: true });
 
 const post = (path: string, body: object, headers: Record<string, string> = { authorization: `Bearer ${token}` }) =>
   app.request(`http://localhost:3847${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
@@ -71,5 +71,17 @@ describe('local agent app skills (validation only — nothing is actually run)',
     expect((await post('/calendar', { title: 'Standup' })).status).toBe(400);
     expect((await post('/clipboard', { action: 'erase' })).status).toBe(400);
     expect((await post('/screenshot', {}, {})).status).toBe(401);
+  });
+});
+
+describe('local agent browser skill (guards only — no browser is started)', () => {
+  it('needs approval, refuses money/password tasks, validates input', async () => {
+    expect((await post('/browser/act', { task: 'check my latest deployment' })).status).toBe(403); // not confirmed
+    const buy = await post('/browser/act', { task: 'buy the pro plan', confirmed: true });
+    expect(buy.status).toBe(403);
+    expect((await buy.json()).error).toMatch(/never makes purchases/);
+    expect((await post('/browser/act', { task: 'log in with my password hunter2', confirmed: true })).status).toBe(403);
+    expect((await post('/browser/read', { url: 'https://example.com' })).status).toBe(400); // no question
+    expect((await post('/browser/read', { url: 'https://example.com', question: 'x' }, {})).status).toBe(401);
   });
 });

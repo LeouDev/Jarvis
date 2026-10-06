@@ -14,15 +14,32 @@ export function MemoryPanel({ version }: { version: number }) {
   const [draft, setDraft] = useState({ content: '', category: 'projects', importance: 3 });
   const [error, setError] = useState('');
 
-  const load = () =>
-    supabase
-      .from('memories')
-      .select('id, content, category, importance, created_at')
-      .order('importance', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(500)
-      .then(({ data }) => setMemories(data ?? []));
+  const [suggestions, setSuggestions] = useState<(MemoryRow & { replaces: string | null })[]>([]);
+
+  const load = async () => {
+    const query = (status: boolean) => {
+      const q = supabase.from('memories').select(`id, content, category, importance, created_at${status ? ', status, replaces' : ''}`);
+      return (status ? q.eq('status', 'active') : q).order('importance', { ascending: false }).order('created_at', { ascending: false }).limit(500);
+    };
+    let { data, error } = await query(true);
+    if (error) ({ data } = await query(false)); // suggestions migration not applied yet
+    setMemories((data ?? []) as unknown as MemoryRow[]);
+    if (error) return;
+    const { data: suggested } = await supabase.from('memories').select('id, content, category, importance, created_at, replaces').eq('status', 'suggested').order('created_at', { ascending: false });
+    setSuggestions(suggested ?? []);
+  };
   useEffect(() => void load(), [version]);
+
+  /** Keep: the suggestion becomes a memory (and replaces the one it updates). Dismiss: it's deleted. */
+  const keep = async (s: MemoryRow & { replaces: string | null }) => {
+    await supabase.from('memories').update({ status: 'active', replaces: null, updated_at: new Date().toISOString() }).eq('id', s.id);
+    if (s.replaces) await supabase.from('memories').delete().eq('id', s.replaces);
+    await load();
+  };
+  const dismiss = async (id: string) => {
+    await supabase.from('memories').delete().eq('id', id);
+    setSuggestions((xs) => xs.filter((x) => x.id !== id));
+  };
 
   const add = async (e: FormEvent) => {
     e.preventDefault();
@@ -45,6 +62,21 @@ export function MemoryPanel({ version }: { version: number }) {
 
   return (
     <div className="space-y-5">
+      {suggestions.length > 0 && (
+        <section className="glass space-y-2 border-glow/30 p-4">
+          <div className="hud-label !text-glow">Suggested by JARVIS</div>
+          {suggestions.map((s) => (
+            <div key={s.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
+              <p className="min-w-0 flex-1 text-sm text-white/90">
+                {s.content}
+                {s.replaces && <span className="ml-2 text-xs text-faint">(updates an existing memory)</span>}
+              </p>
+              <button onClick={() => keep(s)} className="rounded-lg bg-arc px-3 py-1.5 text-xs font-medium text-white hover:bg-arc/85">Keep</button>
+              <button onClick={() => dismiss(s.id)} className="rounded-lg px-3 py-1.5 text-xs text-dim ring-1 ring-line hover:text-white">Dismiss</button>
+            </div>
+          ))}
+        </section>
+      )}
       <form onSubmit={add} className="glass space-y-3 p-4">
         <div className="hud-label">Teach JARVIS something</div>
         <input className={`${field} w-full`} value={draft.content} maxLength={500} onChange={(e) => setDraft({ ...draft, content: e.target.value })} placeholder="e.g. Dicta is my social quote app" aria-label="Memory" />

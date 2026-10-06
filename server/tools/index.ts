@@ -3,8 +3,8 @@ import type { AITool, AIToolCall } from '../ai/AIProvider.js';
 import type { Settings } from '../../shared/types.js';
 import { completeTask, createTask, deleteMemory, getCurrentTime, listTasks, saveMemory, saveProject, searchMemory } from './core.js';
 import {
-  clipboard, createCalendarEvent, createFile, createNote, createReminder, lookAtScreen, mediaControl, openApplication,
-  openProject, openWebsite, readFile, runTerminal, searchFiles, setVolume, systemStatus,
+  browserRead, browserTask, clipboard, createCalendarEvent, createFile, createNote, createReminder, lookAtScreen, mediaControl,
+  openApplication, openProject, openWebsite, readFile, runTerminal, searchFiles, setVolume, systemStatus,
 } from './mac.js';
 import { github, socialGetAccount, socialPublish, webSearch } from './services.js';
 import type { ApprovalDecision, JarvisTool } from './types.js';
@@ -13,7 +13,7 @@ export const TOOLS: JarvisTool[] = [
   getCurrentTime, searchMemory, saveMemory, deleteMemory, saveProject, createTask, listTasks, completeTask,
   webSearch, github, socialGetAccount, socialPublish,
   openApplication, openWebsite, runTerminal, readFile, searchFiles, createFile, systemStatus, openProject,
-  mediaControl, setVolume, createReminder, createNote, createCalendarEvent, lookAtScreen, clipboard,
+  mediaControl, setVolume, createReminder, createNote, createCalendarEvent, lookAtScreen, clipboard, browserRead, browserTask,
 ];
 
 export const getTool = (name: string) => TOOLS.find((t) => t.name === name);
@@ -25,6 +25,7 @@ const INTENTS: [JarvisTool['group'], RegExp][] = [
   ['tasks', /\b(tasks?|to-?dos?|remind|reminders?)\b/i],
   ['mac', /\b(open|launch|start|run|command|terminal|shell|directory|folder|files?|read|create|write|save|cpu|memory usage|system|status|mac|computer|apps?|website|url|disk|code|editor|finder|find|locate|where|pdf|docs?|documents?|downloads?|desktop)\b/i],
   ['macApps', /\b(music|songs?|spotify|play|playing|pause|resume|skip|next|previous|track|volume|mute|unmute|louder|quieter|softer|remind|reminders?|notes?|calendar|event|meeting|appointment|schedule|screen|screenshot|see|look|clipboard|copy|paste)\b/i],
+  ['browser', /\b(browser|dashboard|portal|account|log ?in|sign ?in|logged|click|fill|form|check (?:my|the) (?:site|page|deploy\w*|status)|deploy(?:ment)?s?|vercel|supabase|on the (?:site|page|website))\b/i],
   ['github', /\b(github|repo|repos|repository|repositories|commits?|pull requests?|prs?|issues?|branch(es)?)\b/i],
   ['social', /\b(post|posts|facebook|instagram|tweet|linkedin|tiktok|publish|caption|social)\b/i],
 ];

@@ -10,6 +10,8 @@ export interface AgentConfig {
   allowedDirectories: string[];
   allowedApps: string[];
   allowedOrigins: string[];
+  /** Run JARVIS's browser without a window (default: visible, so you can watch and sign in). */
+  browserHeadless: boolean;
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -46,5 +48,6 @@ export function loadConfig(): AgentConfig {
     allowedDirectories: (file.allowedDirectories ?? []).map((d: string) => resolve(expandHome(d))),
     allowedApps: file.allowedApps ?? DEFAULT_APPS,
     allowedOrigins: file.allowedOrigins ?? [],
+    browserHeadless: process.env.JARVIS_BROWSER_HEADLESS === '1' || (file.browserHeadless ?? false),
   };
 }

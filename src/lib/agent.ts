@@ -32,12 +32,12 @@ export const agentSettings = {
 export const AGENT_OFFLINE = "I can't control your Mac because the JARVIS local agent isn't running. Start it with `npm run agent`.";
 
 /** GET without a body, POST with one. */
-export async function agentRequest<T = any>(path: string, body?: unknown): Promise<T> {
+export async function agentRequest<T = any>(path: string, body?: unknown, timeoutMs = 30_000): Promise<T> {
   const res = await fetch(`${agentSettings.url}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: { authorization: `Bearer ${agentSettings.token}`, 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   // An agent started before a skill was added answers its route with a plain-text 404.
   if (res.status === 404) return { ok: false, error: 'Your Mac agent is out of date. Restart it with npm run agent.' } as T;
@@ -71,14 +71,19 @@ const ENDPOINTS: Record<string, string> = {
   createCalendarEvent: '/calendar',
   lookAtScreen: '/screenshot',
   clipboard: '/clipboard',
+  browserRead: '/browser/read',
+  browserTask: '/browser/act',
 };
+
+/** Browser work takes longer than a local command. */
+const TIMEOUT_MS: Record<string, number> = { browserRead: 90_000, browserTask: 180_000 };
 
 /** Executes an agent tool. `confirmed` tells the agent the user approved it in the dialog. */
 export async function runAgentTool(tool: string, input: Record<string, unknown>, confirmed: boolean): Promise<{ ok: boolean; output: string; image?: string }> {
   const path = ENDPOINTS[tool];
   if (!path) return { ok: false, output: `The Mac agent doesn't support ${tool}.` };
   try {
-    const res = await agentRequest<{ ok: boolean; output?: string; error?: string; image?: string }>(path, { ...input, confirmed });
+    const res = await agentRequest<{ ok: boolean; output?: string; error?: string; image?: string }>(path, { ...input, confirmed }, TIMEOUT_MS[tool]);
     return res.ok ? { ok: true, output: res.output ?? 'Done.', image: res.image } : { ok: false, output: res.error ?? 'The Mac agent refused.' };
   } catch {
     return { ok: false, output: AGENT_OFFLINE };

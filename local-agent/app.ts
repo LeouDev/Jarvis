@@ -5,6 +5,7 @@ import type { AgentConfig } from './config/index.js';
 import { AgentError, LOCAL_HOST, tokenMatches } from './security/index.js';
 import * as tools from './tools/index.js';
 import * as apps from './tools/mac-apps.js';
+import * as web from './tools/browser.js';
 
 async function body<T>(c: Context, schema: z.ZodType<T>): Promise<T> {
   const r = schema.safeParse(await c.req.json().catch(() => null));
@@ -126,6 +127,17 @@ export function createAgentApp(cfg: AgentConfig) {
   });
 
   app.post('/screenshot', async (c) => c.json({ ok: true, output: 'Captured the main display.', image: await apps.screenshot() }));
+
+  app.post('/browser/read', async (c) => {
+    const i = await body(c, z.object({ url: z.string().max(2000), question: z.string().min(1).max(500) }));
+    return c.json({ ok: true, output: await web.readPage(i.url, i.question, cfg.browserHeadless) });
+  });
+
+  app.post('/browser/act', async (c) => {
+    const i = await body(c, z.object({ task: z.string().min(1).max(1000), url: z.string().max(2000).optional(), confirmed }));
+    if (!i.confirmed) throw new AgentError(403, 'Browser tasks need your approval in JARVIS first.');
+    return c.json({ ok: true, output: await web.runTask(i.task, i.url, cfg.browserHeadless) });
+  });
 
   app.post('/clipboard', async (c) => {
     const i = await body(c, z.object({ action: z.enum(['read', 'write']), text: z.string().max(100_000).optional() }));

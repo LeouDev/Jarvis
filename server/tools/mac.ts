@@ -135,3 +135,21 @@ export const clipboard: JarvisTool<{ action: 'read' | 'write'; text?: string }> 
   schema: z.object({ action: z.enum(['read', 'write']), text: z.string().max(100_000).optional() }),
   summary: (i) => (i.action === 'read' ? 'Read the clipboard' : 'Copied text to the clipboard'),
 };
+
+export const browserRead: JarvisTool<{ url: string; question: string }> = {
+  untrustedOutput: true,
+  name: 'browserRead', group: 'browser', permission: 'read', runOn: 'agent',
+  description:
+    "Open a web page in JARVIS's own browser on the Mac (where the user can stay signed in to sites) and answer a question about it — e.g. dashboards, account pages, docs. For general facts prefer webSearch.",
+  schema: z.object({ url: z.url({ protocol: /^https?$/ }), question: z.string().min(1).max(500) }),
+  summary: (i) => `Read ${(() => { try { return new URL(i.url).hostname; } catch { return i.url; } })()}`,
+};
+
+export const browserTask: JarvisTool<{ task: string; url?: string }> = {
+  untrustedOutput: true,
+  name: 'browserTask', group: 'browser', permission: 'dangerous', runOn: 'agent',
+  description:
+    "Have JARVIS's browser carry out a multi-step task on websites (navigating, clicking, typing, reading results), e.g. 'check the status of my latest Vercel deployment'. Always asks the user first. It never buys, pays, transfers money or enters passwords — say so if asked.",
+  schema: z.object({ task: z.string().min(1).max(1000), url: z.url({ protocol: /^https?$/ }).optional() }),
+  summary: (i) => `Browser: ${i.task.slice(0, 80)}`,
+};

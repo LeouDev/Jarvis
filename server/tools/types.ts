@@ -14,7 +14,7 @@ export interface JarvisTool<T = any> {
   description: string;
   permission: Permission;
   /** Intent group used for dynamic tool loading. */
-  group: 'memory' | 'time' | 'web' | 'tasks' | 'mac' | 'macApps' | 'github' | 'social';
+  group: 'memory' | 'time' | 'web' | 'tasks' | 'mac' | 'macApps' | 'browser' | 'github' | 'social';
   /** 'agent' tools are executed by the browser through the local Mac agent (it can reach localhost; Vercel can't). */
   runOn: 'server' | 'agent';
   schema: z.ZodType<T>;

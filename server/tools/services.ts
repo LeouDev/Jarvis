@@ -10,7 +10,7 @@ const label = (p: string) => SOCIAL_PROVIDERS[p]?.label ?? p;
 export const webSearch: JarvisTool<{ query: string; limit: number }> = {
   untrustedOutput: true,
   name: 'webSearch', group: 'web', permission: 'read', runOn: 'server',
-  description: 'Search the web for current information. Summarize the results for the user; do not dump them.',
+  description: "Search the web for current public information. Summarize the results for the user; do not dump them. Not for the user's own accounts or dashboards (e.g. their deployments) — use the browser tools for those.",
   schema: z.object({ query: z.string().min(1).max(300), limit: z.number().int().min(1).max(8).default(5) }),
   summary: (i) => `Searched the web for "${i.query}"`,
   async execute({ query, limit }) {

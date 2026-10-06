@@ -5,6 +5,7 @@ import { requireUser, type Env } from './lib/auth.js';
 import { encrypt } from './lib/crypto.js';
 import { UserFacingError } from './lib/util.js';
 import { MEMORY_CATEGORIES, saveMemory } from './memory/memory.js';
+import { completeWith } from './memory/consolidate.js';
 import { chatRoute } from './routes/chat.js';
 import { FacebookProvider } from './social/index.js';
 import { TOOLS } from './tools/index.js';
@@ -94,7 +95,8 @@ const MemoryBody = z.object({
 app.post('/memories', async (c) => {
   const body = MemoryBody.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: 'Invalid memory.' }, 400);
-  return c.json(await saveMemory(c.var.db, body.data), 201);
+  const { memory, outcome } = await saveMemory(c.var.db, body.data, completeWith());
+  return c.json({ ...memory, outcome }, 201);
 });
 
 const FacebookBody = z.object({ pageId: z.string().regex(/^\d{5,25}$/, 'Page ID is numeric'), accessToken: z.string().min(20).max(1000) });

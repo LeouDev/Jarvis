@@ -17,6 +17,7 @@
     "prebuild": "node scripts/copy-vad-assets.mjs"
   },
   "dependencies": {
+    "@browserbasehq/stagehand": "^3.7.3",
     "@hono/node-server": "^2.1.3",
     "@ricky0123/vad-web": "^0.0.31",
     "@supabase/supabase-js": "^2.117.2",

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MEMORY_CATEGORIES, saveMemory as save, searchMemories } from '../memory/memory.js';
+import { completeWith } from '../memory/consolidate.js';
 import { projectLine, saveProject as storeProject } from '../memory/projects.js';
 import { fail, ok, type JarvisTool } from './types.js';
 
@@ -34,9 +35,10 @@ export const saveMemory: JarvisTool<{ content: string; category: (typeof MEMORY_
     importance: z.number().int().min(1).max(5).default(3).describe('1 = trivia, 5 = core fact'),
   }),
   summary: (i) => `Saved memory: ${i.content}`,
-  async execute(input, { db }) {
-    const m = await save(db, input);
-    return ok(`Saved memory ${m.id}.`);
+  async execute(input, { db, settings }) {
+    const { memory, outcome } = await save(db, input, completeWith(settings.provider));
+    const said = { added: 'Saved', updated: 'Updated an existing memory', replaced: 'Replaced an outdated memory', known: 'Already known' }[outcome];
+    return ok(`${said}: ${memory.content} (${memory.id})`);
   },
 };
 

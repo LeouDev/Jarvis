@@ -6,7 +6,7 @@ import { SENSITIVE_PATH } from '../../shared/policy.js';
 import { expandHome } from '../config/index.js';
 
 export class AgentError extends Error {
-  constructor(public status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 500, message: string) {
+  constructor(public status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 500 | 503, message: string) {
     super(message);
   }
 }

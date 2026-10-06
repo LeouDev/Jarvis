@@ -200,7 +200,13 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
           label="Recall relevant memories automatically"
           hint={`Adds the most relevant saved memories to each request${config?.embeddings ? ' (semantic search on)' : ' (keyword search; add GEMINI_API_KEY for semantic search)'}`}
           checked={settings.memory.autoRecall}
-          onChange={(autoRecall) => update((s) => ({ ...s, memory: { autoRecall } }))}
+          onChange={(autoRecall) => update((s) => ({ ...s, memory: { ...s.memory, autoRecall } }))}
+        />
+        <Toggle
+          label="Suggest memories from conversation"
+          hint="When you mention something lasting (a project, a plan, a preference), JARVIS proposes a memory in the Memory tab. Nothing is saved until you keep it."
+          checked={settings.memory.suggest}
+          onChange={(suggest) => update((s) => ({ ...s, memory: { ...s.memory, suggest } }))}
         />
         <p className="text-xs text-faint">JARVIS only saves a memory when you explicitly ask, and refuses passwords, keys and tokens.</p>
       </Section>

@@ -36,8 +36,8 @@ describe('memory safety', () => {
     const insert = vi.fn(() => ({ select: () => ({ single }) }));
     const none = { select: () => ({ eq: () => ({ limit: async () => ({ data: [] }) }) }) };
     const db = { from: () => ({ insert, ...none }) } as any;
-    const m = await saveMemory(db, { content: ' Dicta is my social quote app ', category: 'projects', importance: 4 });
-    expect(m.id).toBe('m1');
+    const { memory, outcome } = await saveMemory(db, { content: ' Dicta is my social quote app ', category: 'projects', importance: 4 });
+    expect([memory.id, outcome]).toEqual(['m1', 'added']);
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({ content: 'Dicta is my social quote app', category: 'projects', importance: 4 }));
   });
 
@@ -45,7 +45,7 @@ describe('memory safety', () => {
     const insert = vi.fn();
     const found = { id: 'm1', content: 'Dicta is my social quote app', category: 'projects', importance: 4 };
     const db = { from: () => ({ insert, select: () => ({ eq: () => ({ limit: async () => ({ data: [found] }) }) }) }) } as any;
-    expect(await saveMemory(db, { content: 'Dicta is my social quote app' })).toEqual(found);
+    expect(await saveMemory(db, { content: 'Dicta is my social quote app' })).toEqual({ memory: found, outcome: 'known' });
     expect(insert).not.toHaveBeenCalled();
   });
 });

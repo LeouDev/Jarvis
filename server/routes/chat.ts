@@ -9,6 +9,7 @@ import type { Env } from '../lib/auth.js';
 import { loadSettings, logActivity, truncate, UserFacingError } from '../lib/util.js';
 import { buildContext, maybeSummarize } from '../memory/context.js';
 import { searchMemories } from '../memory/memory.js';
+import { suggestMemories } from '../memory/suggest.js';
 import { getTool, planToolCall, selectTools, toAITool, untrustedSinceUser } from '../tools/index.js';
 import type { JarvisTool, ToolContext, ToolResult } from '../tools/types.js';
 import { redact } from '../../shared/policy.js';
@@ -212,6 +213,10 @@ async function runChat(db: SupabaseClient, body: z.infer<typeof Body>, send: Sen
   }
   // Housekeeping after the reply is out: it must not delay the end of the stream (and the last sentence).
   waitUntil(maybeSummarize(db, conversationId, settings.provider).catch((err) => console.error('[summary]', err)));
+  if (body.message && settings.memory.suggest) {
+    const reply = messages.findLast((m) => m.role === 'assistant')?.content ?? '';
+    waitUntil(suggestMemories(db, body.message, reply, profile.data?.display_name || 'the user', settings.provider).catch((err) => console.error('[suggest]', err)));
+  }
 }
 
 const confirmation = (tool: string, input: unknown) => getTool(tool)?.confirm?.(input) ?? null;

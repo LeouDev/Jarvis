@@ -107,3 +107,18 @@ describe('self-confirming actions (no second model call)', () => {
     for (const t of ['webSearch', 'searchMemory', 'runTerminal', 'social_publish', 'lookAtScreen', 'readFile']) expect(getTool(t)!.confirm).toBeUndefined();
   });
 });
+
+describe('browser tools', () => {
+  it('reads freely but always asks before acting', () => {
+    expect(planToolCall(call('browserRead', { url: 'https://vercel.com/dashboard', question: 'Latest deploy status?' }), relaxed)).toMatchObject({ kind: 'pending', needsApproval: false });
+    expect(planToolCall(call('browserTask', { task: 'Check my latest Vercel deployment' }), relaxed)).toMatchObject({ kind: 'pending', needsApproval: true });
+    expect(planToolCall(call('browserRead', { url: 'file:///etc/passwd', question: 'x' }), relaxed).kind).toBe('invalid');
+  });
+
+  it('loads for dashboard/deploy/login requests', () => {
+    const names = (text: string) => selectTools(text).map((t) => t.name);
+    expect(names('Check the status of my latest Vercel deployment')).toContain('browserTask');
+    expect(names('What does my Supabase dashboard say?')).toContain('browserRead');
+    expect(names('Hello JARVIS')).not.toContain('browserTask');
+  });
+});
