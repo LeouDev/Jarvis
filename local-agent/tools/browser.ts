@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import type { Stagehand as StagehandType } from '@browserbasehq/stagehand';
 import { z } from 'zod';
 import { AgentError } from '../security/index.js';
@@ -38,6 +40,25 @@ const model = () => {
   return { modelName: process.env.JARVIS_BROWSER_MODEL || 'google/gemini-3.5-flash-lite', apiKey };
 };
 
+/** Chrome main processes using JARVIS's profile. JARVIS launches its own with --remote-debugging-port. */
+async function profileChromes() {
+  const { stdout } = await promisify(execFile)('ps', ['-axo', 'pid=,command=']);
+  return stdout
+    .split('\n')
+    .filter((l) => l.includes(`--user-data-dir=${PROFILE}`) && !l.includes('--type='))
+    .map((l) => ({ pid: Number(l.trim().split(' ')[0]), launchedByJarvis: l.includes('--remote-debugging-port') }));
+}
+
+/** Two Chromes on one profile corrupt it ("Something went wrong when opening your profile"). */
+async function claimProfile() {
+  const running = await profileChromes();
+  if (running.some((p) => !p.launchedByJarvis))
+    throw new AgentError(409, "JARVIS's browser is open in another Chrome window. Quit that window (Cmd+Q), then ask again.");
+  // Left over from an agent that stopped while its browser was open.
+  for (const p of running) process.kill(p.pid, 'SIGTERM');
+  for (let i = 0; i < 50 && (await profileChromes()).length; i++) await new Promise((r) => setTimeout(r, 100));
+}
+
 async function browser(headless: boolean): Promise<StagehandType> {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => void closeBrowser(), IDLE_CLOSE_MS);
@@ -45,7 +66,8 @@ async function browser(headless: boolean): Promise<StagehandType> {
   starting ??= (async () => {
     if (!existsSync(CHROME)) throw new AgentError(404, 'Google Chrome is needed for web browsing and was not found in /Applications.');
     mkdirSync(PROFILE, { recursive: true });
-    // A crashed run leaves Chrome's profile lock behind, which makes the next launch abort.
+    await claimProfile();
+    // No Chrome holds the profile now, so a lock left by a crashed run is stale and would make the launch abort.
     // chrome-launcher appends to chrome-err.log and reads the first DevTools port in it, so an old log points at a dead port.
     for (const f of ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'chrome-err.log', 'chrome-out.log'])
       rmSync(join(PROFILE, f), { force: true });
