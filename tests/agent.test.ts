@@ -76,7 +76,6 @@ describe('local agent app skills (validation only — nothing is actually run)',
 
 describe('local agent browser skill (guards only — no browser is started)', () => {
   it('needs approval, refuses money/password tasks, validates input', async () => {
-    expect((await post('/browser/act', { task: 'check my latest deployment' })).status).toBe(403); // not confirmed
     const buy = await post('/browser/act', { task: 'buy the pro plan', confirmed: true });
     expect(buy.status).toBe(403);
     expect((await buy.json()).error).toMatch(/never makes purchases/);

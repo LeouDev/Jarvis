@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractTerms, isLooping, looksLikeBleed, transcribe, vocabulary, whisperLanguage } from '../server/voice/transcribe';
+import { synthesize } from '../server/voice/speak';
 import { downsample, encodeWav } from '../src/lib/whisper';
 
 afterEach(() => {
@@ -86,5 +87,23 @@ describe('Whisper transcription', () => {
     // Garbled audio (calibrated: clear speech ≈ -0.3…-0.6, noise-drowned ≈ -1.2) → ask to repeat.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ text: 'Open the cash at the project, VFO. RPE.', segments: [{ avg_logprob: -1.16 }] })));
     expect(await transcribe(audio)).toEqual({ text: 'Open the cash at the project, VFO. RPE.', unclear: true });
+  });
+});
+
+describe('natural voice (Orpheus)', () => {
+  const limited = (after: string) => new Response('rate limited', { status: 429, headers: { 'retry-after': after } });
+
+  it('waits out a short burst limit once instead of falling back', async () => {
+    process.env.GROQ_API_KEY = 'test';
+    const fetchMock = vi.fn().mockResolvedValueOnce(limited('0.01')).mockResolvedValueOnce(new Response(new Uint8Array([1, 2])));
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await synthesize('Hello.', 'troy')).byteLength).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports a long limit with its wait so the browser pauses only that long', async () => {
+    process.env.GROQ_API_KEY = 'test';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(limited('120')));
+    await expect(synthesize('Hello.', 'troy')).rejects.toMatchObject({ status: 429, retryAfter: 120 });
   });
 });

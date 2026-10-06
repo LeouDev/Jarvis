@@ -11,8 +11,8 @@ export interface Settings {
   voice: { speak: boolean; voiceName: string; rate: number; followUp: boolean; wakeWord: boolean; lang: string; engine: 'whisper' | 'browser'; output: 'natural' | 'browser'; naturalVoice: string; turnPause: 'short' | 'normal' | 'long'; bargeIn: boolean };
   /** suggest: propose memories from conversation for the user to keep or dismiss. */
   memory: { autoRecall: boolean; suggest: boolean };
-  /** Posting and sending messages always require approval; these two are user-adjustable. */
-  approvals: { files: boolean; terminal: boolean };
+  /** Posting and sending messages always require approval; these three are user-adjustable. */
+  approvals: { files: boolean; terminal: boolean; browser: boolean };
   social: { defaultPlatform: string };
 }
 
@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
   provider: '',
   voice: { speak: true, voiceName: '', rate: 1, followUp: true, wakeWord: false, lang: '', engine: 'whisper', output: 'natural', naturalVoice: 'troy', turnPause: 'normal', bargeIn: true }, // lang '' = browser language
   memory: { autoRecall: true, suggest: true },
-  approvals: { files: true, terminal: true },
+  approvals: { files: true, terminal: true, browser: true },
   social: { defaultPlatform: 'facebook' },
 };
 

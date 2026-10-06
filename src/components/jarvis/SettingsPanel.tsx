@@ -221,6 +221,12 @@ export function SettingsPanel({ settings, update, config, email, displayName, on
           checked={settings.approvals.terminal}
           onChange={(terminal) => update((s) => ({ ...s, approvals: { ...s.approvals, terminal } }))}
         />
+        <Toggle
+          label="Browser tasks"
+          hint="When off, website tasks you ask for run right away. A task that follows something JARVIS read on a page or in a file still asks. Purchases, payments, passwords and posting are always refused."
+          checked={settings.approvals.browser}
+          onChange={(browser) => update((s) => ({ ...s, approvals: { ...s.approvals, browser } }))}
+        />
       </Section>
 
       <Section title="Social">

@@ -71,10 +71,10 @@ async function fetchSpeech(text: string, voiceName: string, signal: AbortSignal)
     signal,
   });
   if (res.ok) return res.blob();
-  const { error } = await res.json().catch(() => ({ error: '' }));
+  const { error, retryAfter } = await res.json().catch(() => ({ error: '', retryAfter: 0 }));
   if (res.status === 409) naturalVoiceStatus.error = error; // stop asking until reload; Settings explains why
-  // Free tier ≈100 clips/day: once limited, use the browser voice for a while instead of failing every sentence.
-  if (res.status === 429) naturalVoiceStatus.pausedUntil = Date.now() + 10 * 60_000;
+  // Free tier ≈100 clips/day: once limited, use the browser voice for as long as Groq says (at most 10 min).
+  if (res.status === 429) naturalVoiceStatus.pausedUntil = Date.now() + Math.min((retryAfter || 600) * 1000, 10 * 60_000);
   return null;
 }
 
@@ -100,6 +100,7 @@ export function createSpeaker(opts: SpeakerOptions): Speaker {
   let started = false;
   let audio: HTMLAudioElement | null = null;
   let finishCurrent: (() => void) | null = null;
+  let fetching: Promise<Blob | null> = Promise.resolve(null);
 
   const playBlob = (blob: Blob) =>
     new Promise<void>((resolve) => {
@@ -121,8 +122,10 @@ export function createSpeaker(opts: SpeakerOptions): Speaker {
     enqueue(text) {
       const line = speakable(text);
       if (!line || stopped) return;
-      // Start fetching now so audio is ready by the time the previous sentence finishes.
-      const clip = opts.natural ? fetchSpeech(line, opts.naturalVoice, abort.signal).catch(() => null) : Promise.resolve(null);
+      // Fetched ahead of playback, but one request at a time: Groq rejects bursts with 429.
+      const clip = opts.natural
+        ? (fetching = fetching.then(() => fetchSpeech(line, opts.naturalVoice, abort.signal).catch(() => null)))
+        : Promise.resolve(null);
       chain = chain.then(async () => {
         const blob = await clip;
         if (stopped) return;

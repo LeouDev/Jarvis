@@ -149,7 +149,8 @@ export const browserTask: JarvisTool<{ task: string; url?: string }> = {
   untrustedOutput: true,
   name: 'browserTask', group: 'browser', permission: 'dangerous', runOn: 'agent',
   description:
-    "Have JARVIS's browser carry out a multi-step task on websites (navigating, clicking, typing, reading results), e.g. 'check the status of my latest Vercel deployment'. Always asks the user first. It never buys, pays, transfers money or enters passwords — say so if asked.",
+    "Have JARVIS's browser carry out a multi-step task on websites (navigating, clicking, typing, reading results), e.g. 'check the status of my latest Vercel deployment'. It never buys, pays, transfers money or enters passwords — say so if asked.",
   schema: z.object({ task: z.string().min(1).max(1000), url: z.url({ protocol: /^https?$/ }).optional() }),
   summary: (i) => `Browser: ${i.task.slice(0, 80)}`,
+  approval: (_, settings) => ({ decision: settings.approvals.browser ? 'approve' : 'auto' }),
 };

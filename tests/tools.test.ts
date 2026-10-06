@@ -3,7 +3,7 @@ import { decideApproval, getTool, planToolCall, selectTools, toAITool, TOOLS, un
 import { DEFAULT_SETTINGS, mergeSettings } from '../shared/types';
 
 const call = (name: string, args: object) => ({ id: 'c1', type: 'function' as const, function: { name, arguments: JSON.stringify(args) } });
-const relaxed = mergeSettings({ approvals: { files: false, terminal: false } });
+const relaxed = mergeSettings({ approvals: { files: false, terminal: false, browser: false } });
 
 describe('tool registry', () => {
   it('every tool is complete and has a valid provider schema', () => {
@@ -111,7 +111,10 @@ describe('self-confirming actions (no second model call)', () => {
 describe('browser tools', () => {
   it('reads freely but always asks before acting', () => {
     expect(planToolCall(call('browserRead', { url: 'https://vercel.com/dashboard', question: 'Latest deploy status?' }), relaxed)).toMatchObject({ kind: 'pending', needsApproval: false });
-    expect(planToolCall(call('browserTask', { task: 'Check my latest Vercel deployment' }), relaxed)).toMatchObject({ kind: 'pending', needsApproval: true });
+    const task = call('browserTask', { task: 'Check my latest Vercel deployment' });
+    expect(planToolCall(task, mergeSettings({}))).toMatchObject({ kind: 'pending', needsApproval: true }); // asks by default
+    expect(planToolCall(task, relaxed)).toMatchObject({ kind: 'pending', needsApproval: false });
+    expect(planToolCall(task, relaxed, true)).toMatchObject({ kind: 'pending', needsApproval: true }); // after outside content
     expect(planToolCall(call('browserRead', { url: 'file:///etc/passwd', question: 'x' }), relaxed).kind).toBe('invalid');
   });
 

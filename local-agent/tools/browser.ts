@@ -13,7 +13,6 @@ import { AgentError } from '../security/index.js';
 
 const PROFILE = join(homedir(), '.jarvis', 'browser');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const IDLE_CLOSE_MS = 10 * 60_000;
 const MAX_STEPS = 15;
 
 /** Tasks the browser must never perform on its own, whatever the instruction says. */
@@ -31,14 +30,27 @@ Your final message is read aloud to the user: state the actual result — the va
 
 let stagehand: StagehandType | null = null;
 let starting: Promise<StagehandType> | null = null;
-let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let busy = false;
 
-const model = () => {
+// Gemini's busiest model sometimes answers 503 "high demand" for a while, and Stagehand then retries for minutes.
+// A 1-token probe (remembered for a few minutes) switches to the backup model instead.
+const MODELS = [process.env.JARVIS_BROWSER_MODEL || 'google/gemini-3.5-flash-lite', 'google/gemini-3.1-flash-lite'];
+let picked = { modelName: MODELS[0], until: 0 };
+
+async function model() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new AgentError(503, 'Web browsing needs GEMINI_API_KEY in the JARVIS .env on this Mac.');
-  return { modelName: process.env.JARVIS_BROWSER_MODEL || 'google/gemini-3.5-flash-lite', apiKey };
-};
+  if (Date.now() > picked.until && MODELS[0].startsWith('google/')) {
+    const ok = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: MODELS[0].slice('google/'.length), messages: [{ role: 'user', content: 'OK' }], max_tokens: 1 }),
+      signal: AbortSignal.timeout(5000),
+    }).then((r) => r.ok, () => false);
+    picked = ok ? { modelName: MODELS[0], until: Date.now() + 5 * 60_000 } : { modelName: MODELS[1], until: Date.now() + 10 * 60_000 };
+  }
+  return { modelName: picked.modelName, apiKey };
+}
 
 /** Chrome main processes using JARVIS's profile. */
 async function profileChromes(): Promise<number[]> {
@@ -60,8 +72,6 @@ async function quitProfileChromes(): Promise<boolean> {
 }
 
 async function browser(headless: boolean): Promise<StagehandType> {
-  clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => void closeBrowser(), IDLE_CLOSE_MS);
   if (stagehand) return stagehand;
   starting ??= (async () => {
     if (!existsSync(CHROME)) throw new AgentError(404, 'Google Chrome is needed for web browsing and was not found in /Applications.');
@@ -74,7 +84,7 @@ async function browser(headless: boolean): Promise<StagehandType> {
     for (const f of ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'chrome-err.log', 'chrome-out.log'])
       rmSync(join(PROFILE, f), { force: true });
     const { Stagehand } = await import('@browserbasehq/stagehand');
-    const s = new Stagehand({ env: 'LOCAL', verbose: 0, disablePino: true, model: model(), localBrowserLaunchOptions: {
+    const s = new Stagehand({ env: 'LOCAL', verbose: 0, disablePino: true, model: await model(), localBrowserLaunchOptions: {
         headless, executablePath: CHROME, userDataDir: PROFILE,
         // Use the real macOS Keychain like a normal Chrome window, so sites signed in by hand stay signed in here.
         ignoreDefaultArgs: ['--use-mock-keychain', '--password-store=basic'],
@@ -96,7 +106,7 @@ export async function closeBrowser() {
 
 const lostBrowser = (err: unknown) => /ECONNREFUSED|ECONNRESET|Target closed|Session closed|browser has disconnected|WebSocket/i.test(String((err as Error)?.message));
 
-/** One browser task at a time. If Chrome went away (closed window, crash), start it again and retry once. */
+/** One browser task at a time, in a window that closes when it's done. If Chrome went away mid-task (crash), retry once. */
 async function exclusive<T>(run: () => Promise<T>): Promise<T> {
   if (busy) throw new AgentError(409, 'The browser is busy with another task. Try again in a moment.');
   busy = true;
@@ -109,10 +119,10 @@ async function exclusive<T>(run: () => Promise<T>): Promise<T> {
       return await run();
     }
   } catch (err) {
-    if (!(err instanceof AgentError)) await closeBrowser();
     throw err instanceof AgentError ? err : new AgentError(500, `The browser couldn't finish: ${(err as Error).message.slice(0, 160)}`);
   } finally {
     busy = false;
+    void closeBrowser();
   }
 }
 
@@ -128,7 +138,7 @@ export function readPage(url: string, question: string, headless: boolean) {
     const s = await browser(headless);
     const page = s.context.pages()[0] ?? (await s.context.newPage());
     await page.goto(httpUrl(url));
-    const { answer } = await s.extract(`Answer from this page: ${question}`, z.object({ answer: z.string() }));
+    const { answer } = await s.extract(`Answer from this page: ${question}`, z.object({ answer: z.string() }), { model: await model() });
     return answer.length > 4000 ? `${answer.slice(0, 4000)}… [truncated]` : answer;
   });
 }
@@ -143,8 +153,7 @@ export function runTask(task: string, url: string | undefined, headless: boolean
       const page = s.context.pages()[0] ?? (await s.context.newPage());
       await page.goto(httpUrl(url));
     }
-    const agent = s.agent({ model: model(), systemPrompt: RULES });
-    const result = await agent.execute({ instruction: task, maxSteps: MAX_STEPS });
+    const result = await s.agent({ model: await model(), systemPrompt: RULES }).execute({ instruction: task, maxSteps: MAX_STEPS });
     const outcome = result.message?.trim() || (result.success ? 'Done.' : 'The task did not finish.');
     return `${result.success ? '' : 'Not completed: '}${outcome}`.slice(0, 4000);
   });

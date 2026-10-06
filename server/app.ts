@@ -66,7 +66,7 @@ app.post('/speak', async (c) => {
     const audio = await synthesize(body.data.text, body.data.voice);
     return new Response(audio, { headers: { 'content-type': 'audio/wav', 'cache-control': 'no-store' } });
   } catch (err) {
-    if (err instanceof SpeechUnavailableError) return c.json({ error: err.message }, err.status);
+    if (err instanceof SpeechUnavailableError) return c.json({ error: err.message, retryAfter: err.retryAfter }, err.status);
     throw err;
   }
 });

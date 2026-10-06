@@ -134,8 +134,8 @@ export function createAgentApp(cfg: AgentConfig) {
   });
 
   app.post('/browser/act', async (c) => {
-    const i = await body(c, z.object({ task: z.string().min(1).max(1000), url: z.string().max(2000).optional(), confirmed }));
-    if (!i.confirmed) throw new AgentError(403, 'Browser tasks need your approval in JARVIS first.');
+    // Whether to ask first is the user's setting in JARVIS; the agent still refuses purchases, payments and passwords.
+    const i = await body(c, z.object({ task: z.string().min(1).max(1000), url: z.string().max(2000).optional() }));
     return c.json({ ok: true, output: await web.runTask(i.task, i.url, cfg.browserHeadless) });
   });
 

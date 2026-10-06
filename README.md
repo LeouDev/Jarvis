@@ -201,10 +201,10 @@ All AppleScript is fixed in `local-agent/tools/mac-apps.ts`, and your words are 
   ```bash
   open -na "Google Chrome" --args --user-data-dir="$HOME/.jarvis/browser"
   ```
-- **Two tools:** `browserRead` (read one page, no approval) and `browserTask` (clicks and types, always asks first).
+- **Two tools:** `browserRead` (read one page, no approval) and `browserTask` (clicks and types). `browserTask` asks first unless you turn off **Settings → Require approval before → Browser tasks**. Even then, a task requested after JARVIS read a web page, file or screen still asks.
 - **Hard limits:** it never buys, pays, transfers money, enters passwords or codes, accepts terms, sends messages, posts, or deletes. Requests like that are refused before the browser opens, and the browser model is told the same. Page text is treated as untrusted data.
-- **Needs:** Google Chrome in `/Applications` and `GEMINI_API_KEY` in `.env` (the agent reads it). Optional: `JARVIS_BROWSER_MODEL` (default `google/gemini-3.5-flash-lite`), and `"browserHeadless": true` in the agent config (or `JARVIS_BROWSER_HEADLESS=1`) to hide the window.
-- The browser closes after 10 idle minutes. One task runs at a time, with at most 15 steps.
+- **Needs:** Google Chrome in `/Applications` and `GEMINI_API_KEY` in `.env` (the agent reads it). Optional: `JARVIS_BROWSER_MODEL` (default `google/gemini-3.5-flash-lite`; when Gemini says it's overloaded, JARVIS uses `google/gemini-3.1-flash-lite` for 10 minutes), and `"browserHeadless": true` in the agent config (or `JARVIS_BROWSER_HEADLESS=1`) to hide the window.
+- The window closes as soon as the task is done. One task runs at a time, with at most 15 steps.
 
 ### Memory
 
@@ -220,7 +220,7 @@ All AppleScript is fixed in `local-agent/tools/mac-apps.ts`, and your words are 
 
 Either way, JARVIS speaks each sentence as soon as it's complete while the rest of the answer is still streaming. With the natural voice, the next sentence's audio is fetched while the current one plays.
 
-Voices: `autumn`, `diana`, `hannah`, `austin`, `daniel`, `troy`. Groq's free tier allows about 100 clips a day (a reply uses 1–3). When it's rate-limited, JARVIS pauses the natural voice for 10 minutes and uses the browser voice in the meantime.
+Voices: `autumn`, `diana`, `hannah`, `austin`, `daniel`, `troy`. Groq's free tier allows about 100 clips a day (a reply uses 1–3). Sentences are requested one at a time, because Groq rejects bursts. A short rate limit is waited out. A longer one (such as the daily cap) switches to the browser voice for as long as Groq asks, up to 10 minutes.
 
 ### Speech recognition
 
@@ -237,7 +237,7 @@ The wake word is always spotted by the browser recognizer. In Whisper mode, the 
 - **Permission levels:**
   - `read`: runs immediately.
   - `write`: runs immediately unless Settings requires approval (files are on by default).
-  - `dangerous`: always asks. Publishing social posts can never skip approval.
+  - `dangerous`: asks, unless a setting allows otherwise (read-only terminal commands, browser tasks). Publishing social posts can never skip approval.
 - **Prompt injection:** some tools return outside content (web search, browser pages, files, command output, screen, clipboard, GitHub). After one of them runs, any action in the same turn that changes something needs your approval, and the dialog says why. The system prompt also tells the model that tool output is data, never instructions.
 - **Headers:** a strict Content-Security-Policy (only same-origin, Supabase and the local agent), `nosniff`, a referrer policy and a permissions policy are set in `vercel.json`.
 - **Untrusted tool calls:** every model tool call is schema-validated (zod) before anything runs. Unknown tools and bad parameters are rejected.
