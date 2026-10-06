@@ -191,8 +191,8 @@ export class WhisperVoiceProvider extends BrowserVoiceProvider {
   }
 
   /** Barge-in: while JARVIS talks, a clear voice interrupts it; returns what you said. */
-  async listenForInterruption({ lang, pauseMs, onInterrupt }: { lang?: string; pauseMs?: number; onInterrupt: () => void }) {
-    const audio = await captureUtterance({ pauseMs: pauseMs ?? TURN_PAUSE_MS.normal, strict: true, maxMs: MAX_MS, onSpeechStart: onInterrupt });
+  async listenForInterruption({ lang, pauseMs, onInterrupt, signal }: { lang?: string; pauseMs?: number; onInterrupt: () => void; signal?: AbortSignal }) {
+    const audio = await captureUtterance({ pauseMs: pauseMs ?? TURN_PAUSE_MS.normal, strict: true, maxMs: MAX_MS, onSpeechStart: onInterrupt, signal });
     if (!audio || peak(audio) < MIN_PEAK) return '';
     return transcribeAudio(encodeWav(audio), lang).catch(() => '');
   }
@@ -228,3 +228,31 @@ export class WhisperVoiceProvider extends BrowserVoiceProvider {
 }
 
 export const whisperVoice = new WhisperVoiceProvider();
+
+/**
+ * While JARVIS talks: a clear voice interrupts it and becomes the next request. Returns a cleanup
+ * that ends only this listener — the follow-up listen may already own the microphone by then.
+ */
+export function watchForBargeIn(o: { lang?: string; pauseMs?: number; onInterrupt: () => void; onCommand: (text: string) => void }) {
+  let interrupted = false;
+  let cancelled = false;
+  const listening = new AbortController();
+  whisperVoice
+    .listenForInterruption({
+      signal: listening.signal,
+      lang: o.lang,
+      pauseMs: o.pauseMs,
+      onInterrupt: () => {
+        if (cancelled) return;
+        interrupted = true;
+        o.onInterrupt();
+      },
+    })
+    .then((text) => {
+      if (!cancelled || interrupted) o.onCommand(text);
+    });
+  return () => {
+    cancelled = true;
+    if (!interrupted) listening.abort();
+  };
+}

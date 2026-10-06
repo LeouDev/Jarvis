@@ -54,7 +54,15 @@ function loadVAD(): Promise<MicVAD> {
  * `noSpeechMs`. `strict` (barge-in) needs a clearer, longer voice so the assistant's own audio
  * doesn't interrupt itself.
  */
-export async function captureUtterance(o: { pauseMs: number; noSpeechMs?: number; maxMs?: number; strict?: boolean; onSpeechStart?: () => void }) {
+export async function captureUtterance(o: {
+  pauseMs: number;
+  noSpeechMs?: number;
+  maxMs?: number;
+  strict?: boolean;
+  onSpeechStart?: () => void;
+  /** Ends this capture only — never one that started after it. */
+  signal?: AbortSignal;
+}) {
   const vad = await loadVAD();
   await stopCapture();
   vad.setOptions({
@@ -86,6 +94,7 @@ export async function captureUtterance(o: { pauseMs: number; noSpeechMs?: number
       onEnd: (audio) => me.finish(audio),
     };
     if (o.noSpeechMs !== undefined) timer = setTimeout(() => me.finish(null), o.noSpeechMs);
+    o.signal?.addEventListener('abort', () => active === me && void stopCapture(), { once: true });
     void vad.start();
   });
 }
